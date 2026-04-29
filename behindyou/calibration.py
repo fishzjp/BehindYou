@@ -5,11 +5,12 @@ import time
 from collections import Counter
 from typing import TYPE_CHECKING
 
+import supervision as sv
+
 import cv2
 import numpy as np
 
 from behindyou.detection import detect_people
-from behindyou.tracking import get_track_id
 
 if TYPE_CHECKING:
     from ultralytics import YOLO
@@ -44,14 +45,15 @@ def calibrate(
         ret, frame = cap.read()
         if not ret:
             continue
-        results = detect_people(model, frame, config.confidence)
+        detections = detect_people(model, frame, config.confidence)
         frame_area = frame.shape[0] * frame.shape[1]
         frame_got_face = False
-        for box in results[0].boxes:
-            tid = get_track_id(box)
-            if tid is None:
-                continue
-            xyxy = box.xyxy[0].cpu().numpy()
+        tracker_ids = detections.tracker_id
+        if tracker_ids is None:
+            continue
+        for i in range(len(detections.xyxy)):
+            tid = int(tracker_ids[i])
+            xyxy = detections.xyxy[i]
             area = (xyxy[2] - xyxy[0]) * (xyxy[3] - xyxy[1])
             if area < frame_area * config.min_area:
                 continue

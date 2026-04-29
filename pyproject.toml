@@ -8,6 +8,7 @@ dependencies = [
     "insightface>=0.7.3",
     "onnxruntime>=1.16.0",
     "lap>=0.5.13",
+    "supervision>=0.25.0",
 ]
 
 [project.scripts]

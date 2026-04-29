@@ -5,6 +5,8 @@ import logging
 import os
 import time
 
+import supervision as sv
+
 import cv2
 import numpy as np
 
@@ -15,7 +17,6 @@ from behindyou.face import FaceDetector, FaceRecognizer
 from behindyou.notification import send_notification
 from behindyou.tracking import (
     box_center,
-    get_track_id,
     is_reasonable_shift,
     point_in_box,
     update_ema,
@@ -95,7 +96,7 @@ def run(config: Config) -> None:
             intruder_boxes = _process_frame(frame, results, state)
 
             if not config.no_preview:
-                if _render_preview(results, intruder_boxes):
+                if _render_preview(frame, results, intruder_boxes):
                     break
 
             _notify_if_needed(intruder_boxes, state)
@@ -126,23 +127,25 @@ class _LoopState:
 
 def _process_frame(
     frame: np.ndarray,
-    results: object,
+    detections: sv.Detections,
     state: _LoopState,
 ) -> list[np.ndarray]:
     config = state.config
     intruder_boxes: list[np.ndarray] = []
     current_tracks: set[int] = set()
 
-    for box in results[0].boxes:
-        xyxy_f = box.xyxy[0].cpu().numpy()
+    tracker_ids = detections.tracker_id
+    if tracker_ids is None:
+        return intruder_boxes
+
+    for i in range(len(detections.xyxy)):
+        xyxy_f = detections.xyxy[i]
         xyxy = xyxy_f.astype(int)
         box_area = (xyxy_f[2] - xyxy_f[0]) * (xyxy_f[3] - xyxy_f[1])
         if box_area < state.min_box_area:
             continue
 
-        tid = get_track_id(box)
-        if tid is None:
-            continue
+        tid = int(tracker_ids[i])
         current_tracks.add(tid)
 
         is_self = tid == state.self_id or point_in_box(box_center(xyxy_f), state.ema_box)
@@ -187,12 +190,38 @@ def _process_frame(
     return intruder_boxes
 
 
-def _render_preview(results: object, intruder_boxes: list[np.ndarray]) -> bool:
-    annotated = results[0].plot()
-    for x1, y1, x2, y2 in intruder_boxes:
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 0, 255), 3)
-        cv2.putText(annotated, "INTRUDER", (x1, y1 - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+_box_annotator = sv.BoxAnnotator()
+_label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1)
+_red_box_annotator = sv.BoxAnnotator(color=sv.Color.RED)
+_red_label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1, color=sv.Color.RED)
+
+
+def _render_preview(frame: np.ndarray, detections: sv.Detections, intruder_boxes: list[np.ndarray]) -> bool:
+    annotated = frame
+
+    tracker_ids = detections.tracker_id
+    confidences = detections.confidence
+    if tracker_ids is not None and confidences is not None:
+        labels = [
+            f"person #{int(tracker_ids[i])} {confidences[i]:.2f}"
+            for i in range(len(detections.xyxy))
+        ]
+    else:
+        labels = []
+
+    annotated = _box_annotator.annotate(scene=annotated, detections=detections)
+    annotated = _label_annotator.annotate(scene=annotated, detections=detections, labels=labels)
+
+    if intruder_boxes:
+        intruder_det = sv.Detections(
+            xyxy=np.array(intruder_boxes, dtype=np.float32),
+        )
+        annotated = _red_box_annotator.annotate(scene=annotated, detections=intruder_det)
+        annotated = _red_label_annotator.annotate(
+            scene=annotated, detections=intruder_det,
+            labels=["INTRUDER"] * len(intruder_boxes),
+        )
+
     cv2.imshow("BehindYou", annotated)
     return cv2.waitKey(1) & 0xFF == ord("q")
 

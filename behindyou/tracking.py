@@ -16,10 +16,6 @@ def point_in_box(center: tuple[float, float], box: np.ndarray, margin: float = 0
     return abs(center[0] - cx) <= half_w and abs(center[1] - cy) <= half_h
 
 
-def get_track_id(box: object) -> int | None:
-    return int(box.id.item()) if box.id is not None else None
-
-
 def update_ema(ema: np.ndarray, new_val: np.ndarray, alpha: float = 0.15) -> np.ndarray:
     return alpha * new_val + (1 - alpha) * ema
 
