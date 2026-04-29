@@ -12,8 +12,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCREENSHOTS_DIR = os.path.join(PROJECT_ROOT, "screenshots")
+SCREENSHOTS_DIR = os.path.join(os.path.expanduser("~"), ".behindyou", "screenshots")
 
 _HAS_TERMINAL_NOTIFIER = shutil.which("terminal-notifier") is not None
 if not _HAS_TERMINAL_NOTIFIER and sys.platform == "darwin":

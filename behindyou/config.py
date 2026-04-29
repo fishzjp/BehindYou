@@ -21,6 +21,7 @@ class Config:
     face_crop_ratio: float = 0.55
     face_match_threshold: float = 0.5
     face_retry_interval: int = 15
+    self_iou_threshold: float = 0.3
 
 
 def parse_args() -> Config:
@@ -34,6 +35,11 @@ def parse_args() -> Config:
     parser.add_argument("--face-min-size", type=float, default=0.15, help="人脸最小尺寸比例（相对裁剪区域），默认 0.15")
     parser.add_argument("--face-match-threshold", type=float, default=0.5, help="人脸匹配相似度阈值，默认 0.5")
     parser.add_argument("--ema-alpha", type=float, default=0.15, help="EMA 平滑系数，默认 0.15")
+    parser.add_argument("--self-iou-threshold", type=float, default=0.3, help="自身 IoU 匹配阈值，默认 0.3")
+    parser.add_argument("--ema-max-shift", type=float, default=0.3, help="EMA 最大偏移比例，默认 0.3")
+    parser.add_argument("--ema-max-skips", type=int, default=10, help="EMA 最大跳过帧数，默认 10")
+    parser.add_argument("--face-crop-ratio", type=float, default=0.55, help="人脸裁剪区域比例，默认 0.55")
+    parser.add_argument("--face-retry-interval", type=int, default=15, help="人脸重试间隔帧数，默认 15")
     parser.add_argument("--no-face-check", action="store_true", help="禁用面部检测，任何人靠近都告警")
     parser.add_argument("--recalibrate", action="store_true", help="强制重新采集人脸数据")
     args = parser.parse_args()
@@ -46,6 +52,10 @@ def parse_args() -> Config:
         parser.error("--persistence must be at least 1")
     if args.min_area <= 0:
         parser.error("--min-area must be positive")
+    if not 0 < args.face_crop_ratio <= 1:
+        parser.error("--face-crop-ratio must be between 0 and 1")
+    if args.face_retry_interval < 1:
+        parser.error("--face-retry-interval must be at least 1")
 
     return Config(
         camera=args.camera,
@@ -56,6 +66,11 @@ def parse_args() -> Config:
         face_min_size=args.face_min_size,
         face_match_threshold=args.face_match_threshold,
         ema_alpha=args.ema_alpha,
+        ema_max_shift=args.ema_max_shift,
+        ema_max_skips=args.ema_max_skips,
+        face_crop_ratio=args.face_crop_ratio,
+        face_retry_interval=args.face_retry_interval,
+        self_iou_threshold=args.self_iou_threshold,
         no_preview=args.no_preview,
         no_face_check=args.no_face_check,
         recalibrate=args.recalibrate,

@@ -6,12 +6,12 @@ import os
 import cv2
 import numpy as np
 
+from behindyou.paths import PROJECT_ROOT
 from behindyou.tracking import crop_upper_body
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FACE_DATA_FILE = os.path.join(_PROJECT_ROOT, "owner_face.npy")
+FACE_DATA_FILE = os.path.join(PROJECT_ROOT, "owner_face.npy")
 
 
 class FaceDetector:
@@ -36,8 +36,9 @@ class FaceRecognizer:
         from insightface.app import FaceAnalysis
 
         self.app = FaceAnalysis(name="buffalo_sc", providers=["CPUExecutionProvider"])
-        self.app.prepare(ctx_id=0, det_size=(640, 640))
+        self.app.prepare(ctx_id=0, det_size=(320, 320))
         self.owner_embedding: np.ndarray | None = None
+        self._owner_norm: float = 0.0
 
     def get_embedding(self, frame: np.ndarray, person_bbox: np.ndarray) -> np.ndarray | None:
         roi = crop_upper_body(frame, person_bbox)
@@ -50,13 +51,20 @@ class FaceRecognizer:
 
     def set_owner_embedding(self, embedding: np.ndarray) -> None:
         self.owner_embedding = embedding.copy()
+        self._owner_norm = float(np.linalg.norm(self.owner_embedding))
+
+    @property
+    def has_owner(self) -> bool:
+        return self.owner_embedding is not None
 
     def is_owner(self, embedding: np.ndarray, threshold: float = 0.5) -> bool:
         if self.owner_embedding is None or embedding is None:
             return False
-        similarity = np.dot(self.owner_embedding, embedding) / (
-            np.linalg.norm(self.owner_embedding) * np.linalg.norm(embedding)
-        )
+        emb_norm = float(np.linalg.norm(embedding))
+        denom = self._owner_norm * emb_norm
+        if denom < 1e-8:
+            return False
+        similarity = np.dot(self.owner_embedding, embedding) / denom
         return similarity >= threshold
 
     def save_embedding(self) -> None:
@@ -67,9 +75,11 @@ class FaceRecognizer:
     def load_embedding(self) -> bool:
         try:
             self.owner_embedding = np.load(FACE_DATA_FILE)
+            self._owner_norm = float(np.linalg.norm(self.owner_embedding))
             logger.info("已加载保存的人脸数据: %s", FACE_DATA_FILE)
             return True
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError, EOFError, OSError) as e:
+            logger.warning("加载人脸数据失败（%s），将重新采集", e)
             return False
 
     def get_cached_embedding(

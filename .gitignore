@@ -7,3 +7,7 @@ dist/
 build/
 *.egg-info/
 .venv/
+.ruff_cache/
+screenshots/
+uv.lock
+.DS_Store

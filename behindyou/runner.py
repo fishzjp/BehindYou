@@ -15,6 +15,7 @@ from behindyou.config import Config
 from behindyou.detection import detect_people, load_model
 from behindyou.face import FaceDetector, FaceRecognizer
 from behindyou.notification import save_screenshot, send_notification
+from behindyou.paths import PROJECT_ROOT
 from behindyou.tracking import (
     box_center,
     is_reasonable_shift,
@@ -23,8 +24,6 @@ from behindyou.tracking import (
 )
 
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def run(config: Config) -> None:
@@ -83,8 +82,12 @@ def run(config: Config) -> None:
 
     logger.info("监控已启动，按 q 退出...")
 
+    target_interval = 1.0 / 30.0
+
     try:
         while True:
+            frame_start = time.monotonic()
+
             ret, frame = cap.read()
             if not ret:
                 logger.error("读取摄像头画面失败")
@@ -105,6 +108,10 @@ def run(config: Config) -> None:
 
             if annotated is not None:
                 _notify_if_needed(intruder_boxes, state, annotated)
+
+            elapsed = time.monotonic() - frame_start
+            if elapsed < target_interval:
+                time.sleep(target_interval - elapsed)
 
     except KeyboardInterrupt:
         pass
@@ -129,6 +136,17 @@ class _LoopState:
     face_cache: dict[int, np.ndarray | None] = dataclasses.field(default_factory=dict)
     face_retry_frame: dict[int, int] = dataclasses.field(default_factory=dict)
 
+    def adopt_as_self(self, tid: int, xyxy: np.ndarray) -> None:
+        old_self_id = self.self_id
+        self.self_id = tid
+        self.ema_box = xyxy.copy()
+        self.ema_skip_count = 0
+        for d in (self.track_persistence, self.face_cache, self.face_retry_frame):
+            d.pop(old_self_id, None)
+        self.track_persistence.pop(tid, None)
+        self.face_cache.pop(tid, None)
+        self.face_retry_frame.pop(tid, None)
+
 
 def _process_frame(
     frame: np.ndarray,
@@ -145,7 +163,6 @@ def _process_frame(
 
     for i in range(len(detections.xyxy)):
         xyxy_f = detections.xyxy[i]
-        xyxy = xyxy_f.astype(int)
         box_area = (xyxy_f[2] - xyxy_f[0]) * (xyxy_f[3] - xyxy_f[1])
         if box_area < state.min_box_area:
             continue
@@ -154,17 +171,14 @@ def _process_frame(
         current_tracks.add(tid)
 
         is_self = tid == state.self_id or point_in_box(box_center(xyxy_f), state.ema_box)
-        if not is_self and state.face_recognizer is not None and state.face_recognizer.owner_embedding is not None:
+        if not is_self and state.face_recognizer is not None and state.face_recognizer.has_owner:
             emb = state.face_recognizer.get_cached_embedding(
                 frame, xyxy_f, tid, state.face_cache, state.face_retry_frame,
                 state.frame_count, config.face_retry_interval,
             )
             if emb is not None and state.face_recognizer.is_owner(emb, config.face_match_threshold):
                 is_self = True
-                state.self_id = tid
-                state.ema_box = xyxy_f.copy()
-                state.ema_skip_count = 0
-                state.track_persistence.pop(tid, None)
+                state.adopt_as_self(tid, xyxy_f)
                 logger.info("人脸匹配成功：主人重入，新 ID=%d", tid)
 
         if is_self:
@@ -176,15 +190,28 @@ def _process_frame(
             else:
                 state.ema_skip_count += 1
                 if state.ema_skip_count >= config.ema_max_skips:
-                    state.ema_box = xyxy_f
-                    state.self_id = tid
-                    state.ema_skip_count = 0
+                    state.adopt_as_self(tid, xyxy_f)
             continue
 
         state.track_persistence[tid] = state.track_persistence.get(tid, 0) + 1
         if state.track_persistence[tid] >= config.persistence:
-            if state.face_detector is None or state.face_detector.has_frontal_face(frame, xyxy_f, config.face_min_size):
-                intruder_boxes.append(xyxy)
+            if _scalar_iou(xyxy_f, state.ema_box) > config.self_iou_threshold:
+                state.adopt_as_self(tid, xyxy_f)
+                continue
+            if state.face_recognizer is not None and state.face_recognizer.has_owner:
+                cached_emb = state.face_cache.get(tid)
+                if cached_emb is None:
+                    if state.face_detector is not None:
+                        if not state.face_detector.has_frontal_face(
+                            frame, xyxy_f, config.face_min_size
+                        ):
+                            continue
+                    else:
+                        continue
+            elif state.face_detector is not None:
+                if not state.face_detector.has_frontal_face(frame, xyxy_f, config.face_min_size):
+                    continue
+            intruder_boxes.append(xyxy_f.astype(int))
 
     for tid in list(state.track_persistence):
         if tid not in current_tracks:
@@ -196,24 +223,31 @@ def _process_frame(
 
 
 _box_annotator = sv.BoxAnnotator()
-_label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1)
+_label_annotator = sv.LabelAnnotator(
+    text_scale=0.5, text_thickness=1, color=sv.Color.BLACK, text_color=sv.Color.WHITE, text_padding=2,
+)
 _red_box_annotator = sv.BoxAnnotator(color=sv.Color.RED)
 _red_label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1, color=sv.Color.RED)
+
+
+def _scalar_iou(a: np.ndarray, b: np.ndarray) -> float:
+    xx1, yy1 = max(a[0], b[0]), max(a[1], b[1])
+    xx2, yy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, xx2 - xx1) * max(0.0, yy2 - yy1)
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / (union + 1e-6)
 
 
 def _annotate_frame(frame: np.ndarray, detections: sv.Detections, intruder_boxes: list[np.ndarray]) -> np.ndarray:
     annotated = frame.copy()
 
+    annotated = _box_annotator.annotate(scene=annotated, detections=detections)
+
     tracker_ids = detections.tracker_id
     confidences = detections.confidence
-    labels = (
-        [f"person #{int(tracker_ids[i])} {confidences[i]:.2f}" for i in range(len(detections.xyxy))]
-        if tracker_ids is not None and confidences is not None
-        else []
-    )
-
-    annotated = _box_annotator.annotate(scene=annotated, detections=detections)
-    annotated = _label_annotator.annotate(scene=annotated, detections=detections, labels=labels)
+    if tracker_ids is not None and confidences is not None:
+        labels = [f"person #{int(tid)} {conf:.2f}" for tid, conf in zip(tracker_ids, confidences)]
+        annotated = _label_annotator.annotate(scene=annotated, detections=detections, labels=labels)
 
     if intruder_boxes:
         intruder_det = sv.Detections(

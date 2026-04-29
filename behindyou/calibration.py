@@ -5,8 +5,6 @@ import time
 from collections import Counter
 from typing import TYPE_CHECKING
 
-import supervision as sv
-
 import cv2
 import numpy as np
 
@@ -91,7 +89,12 @@ def calibrate(
     if len(unique_ids) > 1:
         logger.warning("检测到 %d 个不同的人，校准结果可能不准确", len(unique_ids))
 
-    self_id = Counter(track_ids).most_common(1)[0][0]
+    most_common = Counter(track_ids).most_common(2)
+    self_id = most_common[0][0]
+    if len(most_common) > 1:
+        ratio = most_common[0][1] / len(track_ids)
+        if ratio < 0.6:
+            logger.warning("主人 ID 置信度偏低 (%.0f%%)，校准可能不准确", ratio * 100)
     self_boxes = [b for b, t in zip(boxes, track_ids) if t == self_id]
     avg_box = np.mean(self_boxes, axis=0)
 
