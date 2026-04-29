@@ -14,11 +14,23 @@
 ## 快速开始
 
 ```bash
-pip install -r requirements.txt
-python main.py
+uv sync
+uv run python main.py
 ```
 
 首次运行会自动校准，采集人脸数据。后续启动将快速校准并开始监控。
+
+也可以直接运行已注册的命令：
+
+```bash
+uv run behindyou
+```
+
+或使用模块方式：
+
+```bash
+uv run python -m behindyou
+```
 
 ## 参数说明
 
@@ -32,3 +44,18 @@ python main.py
 | `--no-preview` | - | 隐藏预览窗口 |
 | `--no-face-check` | - | 禁用人脸验证 |
 | `--recalibrate` | - | 强制重新采集人脸数据 |
+
+## 项目结构
+
+```
+behindyou/
+├── __init__.py        # 包入口，cli_main()
+├── __main__.py        # python -m behindyou
+├── config.py          # 配置管理（dataclass + CLI 参数）
+├── detection.py       # YOLO 检测封装
+├── face.py            # 人脸检测与识别
+├── tracking.py        # EMA 追踪工具函数
+├── calibration.py     # 校准逻辑
+├── notification.py    # 系统通知
+└── runner.py          # 主监控循环
+```

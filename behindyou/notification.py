@@ -1,9 +1,17 @@
+from __future__ import annotations
+
+import logging
 import subprocess
 import sys
 
+logger = logging.getLogger(__name__)
+
 
 def _escape_applescript(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    s = s.replace("\\", "\\\\")
+    s = s.replace('"', '\\"')
+    s = s.replace("\n", "\\n")
+    return s
 
 
 def send_notification(person_count: int) -> None:
@@ -26,4 +34,4 @@ def send_notification(person_count: int) -> None:
             stderr=subprocess.DEVNULL,
         )
     else:
-        print(f"[通知] {title} {message}")
+        logger.info("[通知] %s %s", title, message)

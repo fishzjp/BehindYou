@@ -3,3 +3,7 @@ __pycache__/
 *.npy
 *.pt
 .env
+dist/
+build/
+*.egg-info/
+.venv/
