@@ -14,7 +14,7 @@ from behindyou.calibration import calibrate
 from behindyou.config import Config
 from behindyou.detection import detect_people, load_model
 from behindyou.face import FaceDetector, FaceRecognizer
-from behindyou.notification import send_notification
+from behindyou.notification import save_screenshot, send_notification
 from behindyou.tracking import (
     box_center,
     is_reasonable_shift,
@@ -95,11 +95,16 @@ def run(config: Config) -> None:
 
             intruder_boxes = _process_frame(frame, results, state)
 
+            annotated: np.ndarray | None = None
+            if not config.no_preview or intruder_boxes:
+                annotated = _annotate_frame(frame, results, intruder_boxes)
+
             if not config.no_preview:
-                if _render_preview(frame, results, intruder_boxes):
+                if _render_preview(annotated):
                     break
 
-            _notify_if_needed(intruder_boxes, state)
+            if annotated is not None:
+                _notify_if_needed(intruder_boxes, state, annotated)
 
     except KeyboardInterrupt:
         pass
@@ -196,18 +201,16 @@ _red_box_annotator = sv.BoxAnnotator(color=sv.Color.RED)
 _red_label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1, color=sv.Color.RED)
 
 
-def _render_preview(frame: np.ndarray, detections: sv.Detections, intruder_boxes: list[np.ndarray]) -> bool:
-    annotated = frame
+def _annotate_frame(frame: np.ndarray, detections: sv.Detections, intruder_boxes: list[np.ndarray]) -> np.ndarray:
+    annotated = frame.copy()
 
     tracker_ids = detections.tracker_id
     confidences = detections.confidence
-    if tracker_ids is not None and confidences is not None:
-        labels = [
-            f"person #{int(tracker_ids[i])} {confidences[i]:.2f}"
-            for i in range(len(detections.xyxy))
-        ]
-    else:
-        labels = []
+    labels = (
+        [f"person #{int(tracker_ids[i])} {confidences[i]:.2f}" for i in range(len(detections.xyxy))]
+        if tracker_ids is not None and confidences is not None
+        else []
+    )
 
     annotated = _box_annotator.annotate(scene=annotated, detections=detections)
     annotated = _label_annotator.annotate(scene=annotated, detections=detections, labels=labels)
@@ -215,6 +218,7 @@ def _render_preview(frame: np.ndarray, detections: sv.Detections, intruder_boxes
     if intruder_boxes:
         intruder_det = sv.Detections(
             xyxy=np.array(intruder_boxes, dtype=np.float32),
+            class_id=np.zeros(len(intruder_boxes), dtype=int),
         )
         annotated = _red_box_annotator.annotate(scene=annotated, detections=intruder_det)
         annotated = _red_label_annotator.annotate(
@@ -222,14 +226,24 @@ def _render_preview(frame: np.ndarray, detections: sv.Detections, intruder_boxes
             labels=["INTRUDER"] * len(intruder_boxes),
         )
 
+    return annotated
+
+
+def _render_preview(annotated: np.ndarray) -> bool:
     cv2.imshow("BehindYou", annotated)
     return cv2.waitKey(1) & 0xFF == ord("q")
 
 
-def _notify_if_needed(intruder_boxes: list[np.ndarray], state: _LoopState) -> None:
+def _notify_if_needed(
+    intruder_boxes: list[np.ndarray],
+    state: _LoopState,
+    annotated: np.ndarray,
+) -> None:
     if not intruder_boxes:
         return
     now = time.monotonic()
-    if now - state.last_notify_time >= state.config.cooldown:
-        send_notification(len(intruder_boxes))
-        state.last_notify_time = now
+    if now - state.last_notify_time < state.config.cooldown:
+        return
+    path = save_screenshot(annotated)
+    send_notification(len(intruder_boxes), path)
+    state.last_notify_time = now
