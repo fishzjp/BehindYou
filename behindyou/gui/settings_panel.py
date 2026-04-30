@@ -114,11 +114,13 @@ class SettingsPanel(QScrollArea):
         self._confidence = _SliderRow("灵敏度", 0.1, 1.0, 0.6)
         self._cooldown = _SliderRow("报警间隔(秒)", 0, 60, 10, step=1.0)
         self._no_face_check = QCheckBox("关闭人脸验证（任何人靠近都报警）")
+        self._face_det_score = _SliderRow("人脸检测阈值", 0.1, 0.9, 0.5)
 
         basic_layout.addWidget(self._camera)
         basic_layout.addWidget(self._confidence)
         basic_layout.addWidget(self._cooldown)
         basic_layout.addWidget(self._no_face_check)
+        basic_layout.addWidget(self._face_det_score)
         self._layout.addWidget(basic_group)
 
         self.setWidget(container)
@@ -130,9 +132,14 @@ class SettingsPanel(QScrollArea):
         self._debounce_timer.setInterval(200)
         self._debounce_timer.timeout.connect(self.emit_config)
 
-        for w in (self._camera, self._confidence, self._cooldown):
+        for w in (self._camera, self._confidence, self._cooldown, self._face_det_score):
             w.value_changed.connect(self._debounce_timer.start)
-        self._no_face_check.stateChanged.connect(lambda: self._debounce_timer.start())
+        self._no_face_check.stateChanged.connect(self._on_face_check_changed)
+
+    def _on_face_check_changed(self) -> None:
+        checked = self._no_face_check.isChecked()
+        self._face_det_score.setVisible(not checked)
+        self._debounce_timer.start()
 
     def get_config(self) -> Config:
         return dataclasses.replace(
@@ -141,6 +148,7 @@ class SettingsPanel(QScrollArea):
             confidence=self._confidence.value,
             cooldown=self._cooldown.value,
             no_face_check=self._no_face_check.isChecked(),
+            face_det_score=self._face_det_score.value,
         )
 
     def set_running(self, running: bool) -> None:

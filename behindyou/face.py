@@ -49,6 +49,45 @@ class FaceRecognizer:
         self.owner_embedding: np.ndarray | None = None
         self._owner_norm: float = 0.0
 
+    def has_frontal_face(
+        self,
+        frame: np.ndarray,
+        person_bbox: np.ndarray,
+        crop_ratio: float = 0.55,
+        min_det_score: float = 0.5,
+    ) -> bool:
+        roi = _crop_upper_body(frame, person_bbox, crop_ratio)
+        if roi.size == 0:
+            return False
+        try:
+            faces = self.app.get(roi)
+        except (RuntimeError, OSError, cv2.error):
+            logger.warning("InsightFace detection 异常", exc_info=True)
+            return False
+        return any(f.det_score >= min_det_score for f in faces)
+
+    def check_frontal_and_get_embedding(
+        self,
+        frame: np.ndarray,
+        person_bbox: np.ndarray,
+        crop_ratio: float = 0.55,
+        min_det_score: float = 0.5,
+    ) -> tuple[bool, np.ndarray | None]:
+        """Check for frontal face and extract embedding in a single InsightFace call."""
+        roi = _crop_upper_body(frame, person_bbox, crop_ratio)
+        if roi.size == 0:
+            return False, None
+        try:
+            faces = self.app.get(roi)
+        except (RuntimeError, OSError, cv2.error):
+            logger.warning("InsightFace detection 异常", exc_info=True)
+            return False, None
+        frontal_faces = [f for f in faces if f.det_score >= min_det_score]
+        if not frontal_faces:
+            return False, None
+        best = max(frontal_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        return True, best.embedding
+
     def get_embedding(
         self,
         frame: np.ndarray,

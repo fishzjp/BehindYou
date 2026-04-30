@@ -161,24 +161,35 @@ def process_frame(
             if _scalar_iou(xyxy_f, state.ema_box) > config.self_iou_threshold:
                 state.adopt_as_self(tid, xyxy_f)
                 continue
-            if (
-                state.face_recognizer is not None
-                and state.face_recognizer.has_owner
-            ):
-                cached_emb = state.face_cache.get(tid)
-                if cached_emb is None:
-                    if state.face_detector is not None:
+            # Face gate: when no_face_check is True, skip all face filtering
+            if not config.no_face_check:
+                # If embedding already cached and confirmed non-owner, skip face gate
+                has_cached_non_owner = False
+                if (
+                    state.face_recognizer is not None
+                    and state.face_recognizer.has_owner
+                ):
+                    cached_emb = state.face_cache.get(tid)
+                    if cached_emb is not None:
+                        has_cached_non_owner = True
+
+                if not has_cached_non_owner:
+                    # Use InsightFace for frontal face check + embedding in one call
+                    if state.face_recognizer is not None:
+                        frontal, emb = state.face_recognizer.check_frontal_and_get_embedding(
+                            frame, xyxy_f, config.face_crop_ratio, config.face_det_score
+                        )
+                        if not frontal:
+                            continue
+                        if emb is not None and state.face_recognizer.has_owner:
+                            state.face_cache[tid] = emb
+                    elif state.face_detector is not None:
                         if not state.face_detector.has_frontal_face(
                             frame, xyxy_f, config.face_min_size, config.face_crop_ratio
                         ):
                             continue
                     else:
                         continue
-            elif state.face_detector is not None:
-                if not state.face_detector.has_frontal_face(
-                    frame, xyxy_f, config.face_min_size, config.face_crop_ratio
-                ):
-                    continue
             intruder_boxes.append(xyxy_f.astype(int))
 
     for tid in list(state.track_persistence):

@@ -20,6 +20,7 @@ class Config:
     face_match_threshold: float = 0.55
     face_retry_interval: int = 15
     self_iou_threshold: float = 0.3
+    face_det_score: float = 0.5
 
     def __post_init__(self) -> None:
         if not 0.0 < self.confidence <= 1.0:
@@ -40,3 +41,5 @@ class Config:
             raise ValueError(f"face_match_threshold must be in (0, 1], got {self.face_match_threshold}")
         if not 0.0 < self.self_iou_threshold <= 1.0:
             raise ValueError(f"self_iou_threshold must be in (0, 1], got {self.self_iou_threshold}")
+        if not 0.0 < self.face_det_score <= 1.0:
+            raise ValueError(f"face_det_score must be in (0, 1], got {self.face_det_score}")
