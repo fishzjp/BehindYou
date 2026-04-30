@@ -15,4 +15,6 @@ def load_model(model_path: str) -> YOLO:
 
 def detect_people(model: YOLO, frame: np.ndarray, confidence: float) -> sv.Detections:
     results = model.track(frame, conf=confidence, classes=[0], verbose=False, persist=True)
+    if not results:
+        return sv.Detections.empty()
     return sv.Detections.from_ultralytics(results[0])

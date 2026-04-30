@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import logging
-import os
 
 import cv2
 import numpy as np
 
-from behindyou.paths import PROJECT_ROOT
-from behindyou.tracking import crop_upper_body
+from behindyou.paths import FACE_DATA_FILE
+
+
+def _crop_upper_body(frame: np.ndarray, bbox: np.ndarray, crop_ratio: float = 0.55) -> np.ndarray:
+    h, w = frame.shape[:2]
+    x1, y1, x2, y2 = [int(v) for v in bbox]
+    crop_bottom = min(y1 + int((y2 - y1) * crop_ratio), h)
+    return frame[max(0, y1):crop_bottom, max(0, x1):min(x2, w)]
 
 logger = logging.getLogger(__name__)
-
-FACE_DATA_FILE = os.path.join(PROJECT_ROOT, "owner_face.npy")
 
 
 class FaceDetector:
@@ -21,8 +24,14 @@ class FaceDetector:
         if self.cascade.empty():
             raise RuntimeError(f"无法加载 Haar Cascade: {path}")
 
-    def has_frontal_face(self, frame: np.ndarray, box: np.ndarray, min_face_ratio: float = 0.15) -> bool:
-        roi = crop_upper_body(frame, box)
+    def has_frontal_face(
+        self,
+        frame: np.ndarray,
+        box: np.ndarray,
+        min_face_ratio: float = 0.15,
+        crop_ratio: float = 0.55,
+    ) -> bool:
+        roi = _crop_upper_body(frame, box, crop_ratio)
         if roi.size == 0:
             return False
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -40,11 +49,20 @@ class FaceRecognizer:
         self.owner_embedding: np.ndarray | None = None
         self._owner_norm: float = 0.0
 
-    def get_embedding(self, frame: np.ndarray, person_bbox: np.ndarray) -> np.ndarray | None:
-        roi = crop_upper_body(frame, person_bbox)
+    def get_embedding(
+        self,
+        frame: np.ndarray,
+        person_bbox: np.ndarray,
+        crop_ratio: float = 0.55,
+    ) -> np.ndarray | None:
+        roi = _crop_upper_body(frame, person_bbox, crop_ratio)
         if roi.size == 0:
             return None
-        faces = self.app.get(roi)
+        try:
+            faces = self.app.get(roi)
+        except (RuntimeError, OSError, cv2.error):
+            logger.warning("InsightFace 推理异常", exc_info=True)
+            return None
         if not faces:
             return None
         return faces[0].embedding
@@ -69,12 +87,17 @@ class FaceRecognizer:
 
     def save_embedding(self) -> None:
         if self.owner_embedding is not None:
-            np.save(FACE_DATA_FILE, self.owner_embedding)
+            FACE_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+            np.save(str(FACE_DATA_FILE), self.owner_embedding)
             logger.info("人脸数据已保存到 %s", FACE_DATA_FILE)
 
     def load_embedding(self) -> bool:
         try:
-            self.owner_embedding = np.load(FACE_DATA_FILE)
+            self.owner_embedding = np.load(str(FACE_DATA_FILE))
+            if self.owner_embedding.ndim != 1:
+                logger.warning("人脸数据格式异常（shape=%s），将重新采集", self.owner_embedding.shape)
+                self.owner_embedding = None
+                return False
             self._owner_norm = float(np.linalg.norm(self.owner_embedding))
             logger.info("已加载保存的人脸数据: %s", FACE_DATA_FILE)
             return True
@@ -91,15 +114,22 @@ class FaceRecognizer:
         retry_map: dict[int, int],
         frame_count: int,
         retry_interval: int,
+        crop_ratio: float = 0.55,
+        initial_delay: int = 3,
     ) -> np.ndarray | None:
         if tid not in cache:
-            emb = self.get_embedding(frame, bbox)
-            cache[tid] = emb
-            if emb is None:
-                retry_map[tid] = frame_count
-        elif cache[tid] is None and frame_count - retry_map.get(tid, 0) >= retry_interval:
-            emb = self.get_embedding(frame, bbox)
-            cache[tid] = emb
-            if emb is None:
-                retry_map[tid] = frame_count
+            cache[tid] = None
+            retry_map[tid] = frame_count
+            return None
+
+        if cache[tid] is None:
+            first_seen = retry_map.get(tid, frame_count)
+            if frame_count - first_seen < initial_delay:
+                return None
+            if frame_count - retry_map.get(tid, 0) >= retry_interval:
+                emb = self.get_embedding(frame, bbox, crop_ratio)
+                cache[tid] = emb
+                if emb is None:
+                    retry_map[tid] = frame_count
+
         return cache.get(tid)

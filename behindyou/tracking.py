@@ -30,8 +30,3 @@ def is_reasonable_shift(old_box: np.ndarray, new_box: np.ndarray, max_shift: flo
     return dx <= max_shift and dy <= max_shift
 
 
-def crop_upper_body(frame: np.ndarray, bbox: np.ndarray, crop_ratio: float = 0.55) -> np.ndarray:
-    h, w = frame.shape[:2]
-    x1, y1, x2, y2 = [int(v) for v in bbox]
-    crop_bottom = min(y1 + int((y2 - y1) * crop_ratio), h)
-    return frame[max(0, y1):crop_bottom, max(0, x1):min(x2, w)]

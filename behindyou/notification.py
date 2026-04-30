@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import logging
-import os
 import shutil
 import subprocess
 import sys
@@ -10,9 +9,11 @@ import sys
 import cv2
 import numpy as np
 
+from behindyou.paths import SCREENSHOTS_DIR as _SCREENSHOTS_DIR_PATH
+
 logger = logging.getLogger(__name__)
 
-SCREENSHOTS_DIR = os.path.join(os.path.expanduser("~"), ".behindyou", "screenshots")
+SCREENSHOTS_DIR = _SCREENSHOTS_DIR_PATH
 
 _HAS_TERMINAL_NOTIFIER = shutil.which("terminal-notifier") is not None
 if not _HAS_TERMINAL_NOTIFIER and sys.platform == "darwin":
@@ -25,23 +26,24 @@ def _escape_applescript(s: str) -> str:
     s = s.replace("\\", "\\\\")
     s = s.replace('"', '\\"')
     s = s.replace("\n", "\\n")
+    s = s.replace("\t", "\\t")
     return s
 
 
 def _popen_silent(args: list[str]) -> None:
-    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 def save_screenshot(annotated_frame: np.ndarray) -> str | None:
-    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filename = f"alert_{timestamp}.jpg"
-    path = os.path.join(SCREENSHOTS_DIR, filename)
-    if not cv2.imwrite(path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 90]):
+    path = SCREENSHOTS_DIR / filename
+    if not cv2.imwrite(str(path), annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 90]):
         logger.warning("截图保存失败：%s", path)
         return None
     logger.info("截图已保存：%s", path)
-    return path
+    return str(path)
 
 
 def send_notification(person_count: int, screenshot_path: str | None = None) -> None:
@@ -55,7 +57,7 @@ def send_notification(person_count: int, screenshot_path: str | None = None) -> 
                 "-title", title,
                 "-message", message,
                 "-contentImage", screenshot_path,
-                "-open", SCREENSHOTS_DIR,
+                "-open", str(SCREENSHOTS_DIR),
                 "-sound", _NOTIFICATION_SOUND,
             ])
         else:

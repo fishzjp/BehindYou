@@ -1,4 +1,4 @@
-from behindyou import cli_main
+from behindyou import gui_main
 
 if __name__ == "__main__":
-    cli_main()
+    gui_main()

@@ -2,17 +2,15 @@
 
 __version__ = "0.1.0"
 
+import logging
 
-def cli_main() -> None:
-    import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
 
-    from behindyou.config import parse_args
-    from behindyou.runner import run
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    )
+def gui_main() -> None:
+    from behindyou.gui.app import gui_main as _gui_main
 
-    config = parse_args()
-    run(config)
+    _gui_main()
