@@ -31,11 +31,12 @@ logger = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BehindYou - 身后人员检测")
+        self.setWindowTitle("BehindYou")
         self.setMinimumSize(1000, 700)
 
         self._worker: DetectionWorker | None = None
         self._calibration_dialog: CalibrationDialog | None = None
+        self._quit_pending = False
 
         self._setup_ui()
         self._setup_menu()
@@ -240,7 +241,19 @@ class MainWindow(QMainWindow):
         self.activateWindow()
 
     def _quit(self) -> None:
-        self._stop_detection()
+        if self._quit_pending:
+            return
+        if self._worker is not None:
+            self._quit_pending = True
+            self._worker.finished.connect(self._quit_when_worker_stopped)
+            self._worker.stop()
+        else:
+            self._tray.hide()
+            QApplication.quit()
+
+    @Slot()
+    def _quit_when_worker_stopped(self) -> None:
+        self._quit_pending = False
         self._tray.hide()
         QApplication.quit()
 

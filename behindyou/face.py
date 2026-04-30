@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 import cv2
 import numpy as np
 
 from behindyou.paths import FACE_DATA_FILE
+
+
+@dataclasses.dataclass
+class FaceInfo:
+    """Face detection result with bounding box and confidence."""
+
+    bbox: np.ndarray  # [x1, y1, x2, y2] in full-frame coordinates
+    score: float
+    embedding: np.ndarray | None = None
 
 
 def _crop_upper_body(frame: np.ndarray, bbox: np.ndarray, crop_ratio: float = 0.55) -> np.ndarray:
@@ -72,21 +82,38 @@ class FaceRecognizer:
         person_bbox: np.ndarray,
         crop_ratio: float = 0.55,
         min_det_score: float = 0.5,
-    ) -> tuple[bool, np.ndarray | None]:
-        """Check for frontal face and extract embedding in a single InsightFace call."""
+    ) -> FaceInfo | None:
+        """Check for frontal face and extract embedding in a single InsightFace call.
+
+        Returns FaceInfo (with bbox in full-frame coords, score, and embedding)
+        if a frontal face is detected, otherwise None.
+        """
         roi = _crop_upper_body(frame, person_bbox, crop_ratio)
         if roi.size == 0:
-            return False, None
+            return None
         try:
             faces = self.app.get(roi)
         except (RuntimeError, OSError, cv2.error):
             logger.warning("InsightFace detection 异常", exc_info=True)
-            return False, None
-        frontal_faces = [f for f in faces if f.det_score >= min_det_score]
-        if not frontal_faces:
-            return False, None
-        best = max(frontal_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        return True, best.embedding
+            return None
+        if not faces:
+            return None
+
+        best = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        if best.det_score < min_det_score:
+            return None
+
+        # Convert face bbox from ROI coordinates to full-frame coordinates
+        x1, y1 = int(person_bbox[0]), int(person_bbox[1])
+        roi_y1 = max(0, y1)
+        roi_x1 = max(0, x1)
+        face_abs = best.bbox + np.array([roi_x1, roi_y1, roi_x1, roi_y1])
+
+        return FaceInfo(
+            bbox=face_abs.astype(int),
+            score=float(best.det_score),
+            embedding=best.embedding,
+        )
 
     def get_embedding(
         self,

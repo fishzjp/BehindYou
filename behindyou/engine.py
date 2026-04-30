@@ -13,7 +13,7 @@ import supervision as sv
 
 from behindyou.config import Config
 from behindyou.detection import detect_people, load_model
-from behindyou.face import FaceDetector, FaceRecognizer
+from behindyou.face import FaceDetector, FaceInfo, FaceRecognizer
 from behindyou.notification import save_screenshot, send_notification
 from behindyou.paths import MODEL_FILE, PROJECT_ROOT
 from behindyou.tracking import (
@@ -30,17 +30,28 @@ logger = logging.getLogger(__name__)
 
 # --- Annotators (module-level, shared) ---
 
-_box_annotator = sv.BoxAnnotator()
+_box_annotator = sv.BoxAnnotator(thickness=2)
 _label_annotator = sv.LabelAnnotator(
-    text_scale=0.5,
-    text_thickness=1,
+    text_scale=1.0,
+    text_thickness=2,
     color=sv.Color.BLACK,
     text_color=sv.Color.WHITE,
-    text_padding=2,
+    text_padding=4,
 )
-_red_box_annotator = sv.BoxAnnotator(color=sv.Color.RED)
+_red_box_annotator = sv.BoxAnnotator(color=sv.Color.RED, thickness=2)
 _red_label_annotator = sv.LabelAnnotator(
-    text_scale=0.5, text_thickness=1, color=sv.Color.RED
+    text_scale=1.0, text_thickness=2, color=sv.Color.RED
+)
+_face_box_annotator = sv.BoxAnnotator(
+    color=sv.Color.GREEN, thickness=2, color_lookup=sv.ColorLookup.INDEX,
+)
+_face_label_annotator = sv.LabelAnnotator(
+    text_scale=1.0,
+    text_thickness=2,
+    color=sv.Color.GREEN,
+    text_color=sv.Color.BLACK,
+    text_padding=4,
+    color_lookup=sv.ColorLookup.INDEX,
 )
 
 
@@ -101,14 +112,15 @@ def process_frame(
     frame: np.ndarray,
     detections: sv.Detections,
     state: _LoopState,
-) -> list[np.ndarray]:
+) -> tuple[list[np.ndarray], list[FaceInfo]]:
     config = state.config
     intruder_boxes: list[np.ndarray] = []
+    face_boxes: list[FaceInfo] = []
     current_tracks: set[int] = set()
 
     tracker_ids = detections.tracker_id
     if tracker_ids is None:
-        return intruder_boxes
+        return intruder_boxes, face_boxes
 
     for i in range(len(detections.xyxy)):
         xyxy_f = detections.xyxy[i]
@@ -176,13 +188,14 @@ def process_frame(
                 if not has_cached_non_owner:
                     # Use InsightFace for frontal face check + embedding in one call
                     if state.face_recognizer is not None:
-                        frontal, emb = state.face_recognizer.check_frontal_and_get_embedding(
+                        face_info = state.face_recognizer.check_frontal_and_get_embedding(
                             frame, xyxy_f, config.face_crop_ratio, config.face_det_score
                         )
-                        if not frontal:
+                        if face_info is None:
                             continue
-                        if emb is not None and state.face_recognizer.has_owner:
-                            state.face_cache[tid] = emb
+                        face_boxes.append(face_info)
+                        if face_info.embedding is not None and state.face_recognizer.has_owner:
+                            state.face_cache[tid] = face_info.embedding
                     elif state.face_detector is not None:
                         if not state.face_detector.has_frontal_face(
                             frame, xyxy_f, config.face_min_size, config.face_crop_ratio
@@ -198,13 +211,14 @@ def process_frame(
             state.face_cache.pop(tid, None)
             state.face_retry_frame.pop(tid, None)
 
-    return intruder_boxes
+    return intruder_boxes, face_boxes
 
 
 def annotate_frame(
     frame: np.ndarray,
     detections: sv.Detections,
     intruder_boxes: list[np.ndarray],
+    face_info_list: list[FaceInfo] | None = None,
 ) -> np.ndarray:
     annotated = _box_annotator.annotate(scene=frame, detections=detections)
 
@@ -231,6 +245,15 @@ def annotate_frame(
             scene=annotated,
             detections=intruder_det,
             labels=["INTRUDER"] * len(intruder_boxes),
+        )
+
+    if face_info_list:
+        fb_xyxy = np.array([fi.bbox for fi in face_info_list], dtype=np.float32)
+        face_det = sv.Detections(xyxy=fb_xyxy)
+        annotated = _face_box_annotator.annotate(scene=annotated, detections=face_det)
+        face_labels = [f"face {fi.score:.2f}" for fi in face_info_list]
+        annotated = _face_label_annotator.annotate(
+            scene=annotated, detections=face_det, labels=face_labels
         )
 
     return annotated
@@ -441,9 +464,9 @@ class DetectionEngine:
         results = detect_people(self._model, frame, config.confidence)
         state.frame_count += 1
 
-        intruder_boxes = process_frame(frame, results, state)
+        intruder_boxes, face_info_list = process_frame(frame, results, state)
 
-        annotated = annotate_frame(frame, results, intruder_boxes)
+        annotated = annotate_frame(frame, results, intruder_boxes, face_info_list)
 
         should_notify = False
         screenshot_path: str | None = None

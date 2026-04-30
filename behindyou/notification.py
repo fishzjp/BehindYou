@@ -57,7 +57,6 @@ def send_notification(person_count: int, screenshot_path: str | None = None) -> 
                 "-title", title,
                 "-message", message,
                 "-contentImage", screenshot_path,
-                "-open", str(SCREENSHOTS_DIR),
                 "-sound", _NOTIFICATION_SOUND,
             ])
         else:
@@ -66,8 +65,6 @@ def send_notification(person_count: int, screenshot_path: str | None = None) -> 
                 f'with title "{_escape_applescript(title)}" sound name "{_NOTIFICATION_SOUND}"'
             )
             _popen_silent(["osascript", "-e", script])
-            if screenshot_path:
-                _popen_silent(["open", "-R", screenshot_path])
     elif sys.platform.startswith("linux"):
         cmd = ["notify-send"]
         if screenshot_path:
