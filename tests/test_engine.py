@@ -29,9 +29,7 @@ def _make_state(**overrides) -> _LoopState:
     return _LoopState(**defaults)
 
 
-def _make_detections(
-    xyxy_list: list[list[float]], tracker_ids: list[int]
-) -> sv.Detections:
+def _make_detections(xyxy_list: list[list[float]], tracker_ids: list[int]) -> sv.Detections:
     return sv.Detections(
         xyxy=np.array(xyxy_list, dtype=np.float32),
         tracker_id=np.array(tracker_ids, dtype=int),
@@ -132,9 +130,7 @@ def test_process_frame_small_box_filtered():
 
 def test_process_frame_stranger_detected_no_face_check():
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    detections = _make_detections(
-        [[100, 100, 300, 300], [400, 400, 600, 600]], [1, 2]
-    )
+    detections = _make_detections([[100, 100, 300, 300], [400, 400, 600, 600]], [1, 2])
     config = Config(no_face_check=True, persistence=1)
     state = _make_state(config=config)
     intruders, _ = process_frame(frame, detections, state)

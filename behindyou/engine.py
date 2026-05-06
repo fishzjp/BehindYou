@@ -135,8 +135,13 @@ def process_frame(
         is_self = tid == state.self_id or point_in_box(box_center(xyxy_f), state.ema_box)
         if not is_self and state.face_recognizer is not None and state.face_recognizer.has_owner:
             emb = state.face_recognizer.get_cached_embedding(
-                frame, xyxy_f, tid, state.face_cache, state.frame_count,
-                config.face_retry_interval, config.face_crop_ratio,
+                frame,
+                xyxy_f,
+                tid,
+                state.face_cache,
+                state.frame_count,
+                config.face_retry_interval,
+                config.face_crop_ratio,
             )
             if emb is not None and state.face_recognizer.is_owner(emb, config.face_match_threshold):
                 is_self = True
@@ -199,7 +204,11 @@ def _classify_stranger(
 
     if recognizer is not None:
         face_info = recognizer.check_frontal_and_get_embedding(
-            frame, xyxy, config.face_crop_ratio, config.face_det_score, config.face_max_yaw,
+            frame,
+            xyxy,
+            config.face_crop_ratio,
+            config.face_det_score,
+            config.face_max_yaw,
         )
         if face_info is None:
             return False
@@ -218,7 +227,10 @@ def _classify_stranger(
         return True
     elif state.face_detector is not None:
         return state.face_detector.has_frontal_face(
-            frame, xyxy, config.face_min_size, config.face_crop_ratio,
+            frame,
+            xyxy,
+            config.face_min_size,
+            config.face_crop_ratio,
         )
     return False
 
@@ -382,7 +394,9 @@ class DetectionEngine:
                     if tid not in embeddings_by_id:
                         embeddings_by_id[tid] = []
                     try:
-                        emb = face_recognizer.get_embedding(frame, xyxy, config.face_crop_ratio, config.face_max_yaw)
+                        emb = face_recognizer.get_embedding(
+                            frame, xyxy, config.face_crop_ratio, config.face_max_yaw
+                        )
                     except Exception:
                         logger.warning("校准期间人脸特征提取失败", exc_info=True)
                         emb = None

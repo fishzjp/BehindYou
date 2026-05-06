@@ -79,11 +79,7 @@ class FaceRecognizer:
             return None
         if not faces:
             return None
-        frontal = [
-            f
-            for f in faces
-            if f.pose is None or abs(f.pose[0]) <= max_yaw
-        ]
+        frontal = [f for f in faces if f.pose is None or abs(f.pose[0]) <= max_yaw]
         return frontal or None
 
     def has_frontal_face(

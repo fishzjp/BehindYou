@@ -102,4 +102,6 @@ def send_notification(person_count: int, screenshot_path: str | None = None) -> 
 
 
 def send_notification_async(person_count: int, screenshot_path: str | None = None) -> None:
-    threading.Thread(target=send_notification, args=(person_count, screenshot_path), daemon=True).start()
+    threading.Thread(
+        target=send_notification, args=(person_count, screenshot_path), daemon=True
+    ).start()
