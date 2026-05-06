@@ -11,3 +11,4 @@ build/
 screenshots/
 uv.lock
 .DS_Store
+.worktrees/
