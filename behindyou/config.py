@@ -29,6 +29,7 @@ class Config:
     face_retry_interval: int = 15
     self_iou_threshold: float = 0.3
     face_det_score: float = 0.5
+    face_max_yaw: float = 45.0
 
     def __post_init__(self) -> None:
         if not 0.0 < self.confidence <= 1.0:
@@ -61,6 +62,8 @@ class Config:
             raise ValueError(f"ema_max_skips must be >= 1, got {self.ema_max_skips}")
         if self.camera < 0:
             raise ValueError(f"camera must be >= 0, got {self.camera}")
+        if not 0.0 < self.face_max_yaw <= 90.0:
+            raise ValueError(f"face_max_yaw must be in (0, 90], got {self.face_max_yaw}")
 
     def to_dict(self) -> dict:
         return dataclasses.asdict(self)

@@ -57,8 +57,6 @@ class FaceDetector:
 
 
 class FaceRecognizer:
-    _MAX_YAW = 45.0
-
     def __init__(self) -> None:
         from insightface.app import FaceAnalysis
 
@@ -94,8 +92,9 @@ class FaceRecognizer:
         person_bbox: np.ndarray,
         crop_ratio: float = 0.55,
         min_det_score: float = 0.5,
+        max_yaw: float = 45.0,
     ) -> bool:
-        faces = self._get_frontal_faces(frame, person_bbox, crop_ratio, self._MAX_YAW)
+        faces = self._get_frontal_faces(frame, person_bbox, crop_ratio, max_yaw)
         if not faces:
             return False
         return any(f.det_score >= min_det_score for f in faces)
@@ -106,8 +105,9 @@ class FaceRecognizer:
         person_bbox: np.ndarray,
         crop_ratio: float = 0.55,
         min_det_score: float = 0.5,
+        max_yaw: float = 45.0,
     ) -> FaceInfo | None:
-        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, self._MAX_YAW)
+        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, max_yaw)
         if not frontal:
             return None
 
@@ -130,8 +130,9 @@ class FaceRecognizer:
         frame: np.ndarray,
         person_bbox: np.ndarray,
         crop_ratio: float = 0.55,
+        max_yaw: float = 45.0,
     ) -> np.ndarray | None:
-        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, self._MAX_YAW)
+        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, max_yaw)
         if not frontal:
             return None
         return frontal[0].embedding

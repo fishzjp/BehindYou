@@ -70,3 +70,16 @@ def test_invalid_self_iou_threshold():
 def test_invalid_face_match_threshold():
     with pytest.raises(ValueError, match="face_match_threshold"):
         Config(face_match_threshold=0.0)
+
+
+def test_face_max_yaw_default():
+    cfg = Config()
+    assert cfg.face_max_yaw == 45.0
+
+
+def test_face_max_yaw_validation():
+    with pytest.raises(ValueError, match="face_max_yaw"):
+        Config(face_max_yaw=0.0)
+    with pytest.raises(ValueError, match="face_max_yaw"):
+        Config(face_max_yaw=91.0)
+    Config(face_max_yaw=90.0)  # boundary OK
