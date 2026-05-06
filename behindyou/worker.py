@@ -32,7 +32,6 @@ class DetectionWorker(QObject):
         self._thread: QThread | None = None
         self._engine: DetectionEngine | None = None
         self._stop_event = threading.Event()
-        self._frame_pending = threading.Event()
         self._config_dirty = threading.Event()
         self.config_requested.connect(self._apply_config)
 
@@ -94,7 +93,6 @@ class DetectionWorker(QObject):
 
                 result = self._engine.step(frame)
 
-                self._frame_pending.clear()
                 self.frame_ready.emit(result.annotated_frame)
 
                 if result.should_notify:
