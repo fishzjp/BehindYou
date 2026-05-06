@@ -18,10 +18,13 @@ class VideoDisplay(QLabel):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("background-color: #1e1e1e;")
-        self.setText("等待摄像头画面...")
+        self.setText("📷  等待摄像头画面...")
+        self._rendering = False
 
     def update_frame(self, bgr_frame: np.ndarray) -> None:
+        if self._rendering:
+            return
+        self._rendering = True
         try:
             if bgr_frame is None or bgr_frame.size == 0:
                 return
@@ -37,3 +40,5 @@ class VideoDisplay(QLabel):
             self.setPixmap(scaled)
         except (ValueError, cv2.error, RuntimeError):
             logger.warning("视频帧渲染异常", exc_info=True)
+        finally:
+            self._rendering = False

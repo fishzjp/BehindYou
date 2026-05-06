@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from behindyou.config import Config
+from behindyou.config import Config, load_config, save_config
 
 
 class _SliderRow(QWidget):
@@ -39,7 +39,7 @@ class _SliderRow(QWidget):
         self._is_int = step >= 1
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setContentsMargins(0, 4, 0, 4)
 
         self._label = QLabel(f"{label}: {int(default) if self._is_int else f'{default:.2f}'}")
         layout.addWidget(self._label)
@@ -85,14 +85,19 @@ class SettingsPanel(QScrollArea):
         container = QWidget()
         self._layout = QVBoxLayout(container)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._layout.setContentsMargins(12, 12, 12, 12)
+        self._layout.setSpacing(8)
 
         # --- Buttons ---
         btn_row = QWidget()
         btn_layout = QHBoxLayout(btn_row)
-        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.setContentsMargins(0, 0, 0, 8)
+        btn_layout.setSpacing(6)
 
         self._btn_start = QPushButton("启动")
+        self._btn_start.setObjectName("btn_start")
         self._btn_stop = QPushButton("停止")
+        self._btn_stop.setObjectName("btn_stop")
         self._btn_calibrate = QPushButton("校准")
         self._btn_stop.setEnabled(False)
 
@@ -125,7 +130,7 @@ class SettingsPanel(QScrollArea):
 
         self.setWidget(container)
 
-        self._current_config = Config()
+        self._current_config = load_config() or Config()
 
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
@@ -158,4 +163,5 @@ class SettingsPanel(QScrollArea):
 
     def emit_config(self) -> None:
         self._current_config = self.get_config()
+        save_config(self._current_config)
         self.config_changed.emit(self._current_config)

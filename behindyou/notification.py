@@ -5,21 +5,26 @@ import logging
 import shutil
 import subprocess
 import sys
+import threading
 
 import cv2
 import numpy as np
 
-from behindyou.paths import SCREENSHOTS_DIR as _SCREENSHOTS_DIR_PATH
+from behindyou.paths import SCREENSHOTS_DIR
 
 logger = logging.getLogger(__name__)
 
-SCREENSHOTS_DIR = _SCREENSHOTS_DIR_PATH
-
 _HAS_TERMINAL_NOTIFIER = shutil.which("terminal-notifier") is not None
 if not _HAS_TERMINAL_NOTIFIER and sys.platform == "darwin":
-    logger.info("terminal-notifier 未安装，将使用 osascript 发送通知（brew install terminal-notifier 可获得截图预览）")
+    logger.info(
+        "terminal-notifier 未安装，将使用 osascript 发送通知（brew install terminal-notifier 可获得截图预览）"
+    )
 
 _NOTIFICATION_SOUND = "Glass"
+_MAX_SCREENSHOTS = 50
+
+_active_procs: list[subprocess.Popen] = []
+_procs_lock = threading.Lock()
 
 
 def _escape_applescript(s: str) -> str:
@@ -31,7 +36,21 @@ def _escape_applescript(s: str) -> str:
 
 
 def _popen_silent(args: list[str]) -> None:
-    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    with _procs_lock:
+        _active_procs[:] = [p for p in _active_procs if p.poll() is None]
+        proc = subprocess.Popen(
+            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        )
+        _active_procs.append(proc)
+
+
+def _cleanup_old_screenshots() -> None:
+    files = sorted(SCREENSHOTS_DIR.glob("alert_*.jpg"), reverse=True)
+    for f in files[_MAX_SCREENSHOTS:]:
+        try:
+            f.unlink()
+        except OSError:
+            pass
 
 
 def save_screenshot(annotated_frame: np.ndarray) -> str | None:
@@ -43,6 +62,7 @@ def save_screenshot(annotated_frame: np.ndarray) -> str | None:
         logger.warning("截图保存失败：%s", path)
         return None
     logger.info("截图已保存：%s", path)
+    _cleanup_old_screenshots()
     return str(path)
 
 
@@ -52,13 +72,19 @@ def send_notification(person_count: int, screenshot_path: str | None = None) -> 
 
     if sys.platform == "darwin":
         if _HAS_TERMINAL_NOTIFIER and screenshot_path:
-            _popen_silent([
-                "terminal-notifier",
-                "-title", title,
-                "-message", message,
-                "-contentImage", screenshot_path,
-                "-sound", _NOTIFICATION_SOUND,
-            ])
+            _popen_silent(
+                [
+                    "terminal-notifier",
+                    "-title",
+                    title,
+                    "-message",
+                    message,
+                    "-contentImage",
+                    screenshot_path,
+                    "-sound",
+                    _NOTIFICATION_SOUND,
+                ]
+            )
         else:
             script = (
                 f'display notification "{_escape_applescript(message)}" '
@@ -73,3 +99,7 @@ def send_notification(person_count: int, screenshot_path: str | None = None) -> 
         _popen_silent(cmd)
     else:
         logger.info("[通知] %s %s", title, message)
+
+
+def send_notification_async(person_count: int, screenshot_path: str | None = None) -> None:
+    threading.Thread(target=send_notification, args=(person_count, screenshot_path), daemon=True).start()

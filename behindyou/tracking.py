@@ -28,5 +28,3 @@ def is_reasonable_shift(old_box: np.ndarray, new_box: np.ndarray, max_shift: flo
     dx = abs(new_cx - old_cx) / max(w, 1)
     dy = abs(new_cy - old_cy) / max(h, 1)
     return dx <= max_shift and dy <= max_shift
-
-

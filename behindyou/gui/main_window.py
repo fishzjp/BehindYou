@@ -17,9 +17,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from behindyou import __version__
 from behindyou.config import Config
 from behindyou.gui.calibration_dialog import CalibrationDialog
 from behindyou.gui.event_log import EventLog, ScreenshotViewer
+from behindyou.gui.styles import COLOR_SUCCESS, COLOR_TEXT_SECONDARY
 from behindyou.gui.settings_panel import SettingsPanel
 from behindyou.gui.tray import TrayIcon
 from behindyou.gui.video_widget import VideoDisplay
@@ -47,7 +49,7 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
-        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setContentsMargins(12, 12, 12, 12)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -111,8 +113,19 @@ class MainWindow(QMainWindow):
     def _setup_status_bar(self) -> None:
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
+
+        self._status_dot = QLabel("●")
+        self._status_dot.setFixedWidth(16)
+        self._status_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._set_status_dot_color(running=False)
+        self._status_bar.addWidget(self._status_dot)
+
         self._status_label = QLabel("就绪")
         self._status_bar.addWidget(self._status_label)
+
+    def _set_status_dot_color(self, running: bool) -> None:
+        color = COLOR_SUCCESS if running else COLOR_TEXT_SECONDARY
+        self._status_dot.setStyleSheet(f"color: {color}; font-size: 14px;")
 
     def _setup_tray(self) -> None:
         self._tray = TrayIcon(self)
@@ -156,6 +169,7 @@ class MainWindow(QMainWindow):
         self._action_start.setEnabled(not running)
         self._action_stop.setEnabled(running)
         self._tray.set_running(running)
+        self._set_status_dot_color(running)
 
     @Slot()
     def _on_worker_finished(self) -> None:
@@ -176,10 +190,7 @@ class MainWindow(QMainWindow):
         self._worker = DetectionWorker(config)
 
         self._connect_worker_signals(self._worker)
-        self._worker.calibration_progress.connect(
-            self._calibration_dialog.update_progress
-        )
-        self._worker.calibration_done.connect(self._calibration_dialog.on_done)
+        self._worker.calibration_progress.connect(self._calibration_dialog.update_progress)
         self._worker.calibration_done.connect(self._on_calibration_done)
         self._worker.finished.connect(self._on_worker_finished)
 
@@ -201,6 +212,8 @@ class MainWindow(QMainWindow):
 
     @Slot(bool, str)
     def _on_calibration_done(self, success: bool, message: str) -> None:
+        if self._calibration_dialog is not None:
+            self._calibration_dialog.on_done(success, message)
         if success:
             self._status_label.setText("校准完成，检测运行中")
             self._set_ui_running(True)
@@ -245,6 +258,10 @@ class MainWindow(QMainWindow):
             return
         if self._worker is not None:
             self._quit_pending = True
+            try:
+                self._worker.finished.disconnect(self._quit_when_worker_stopped)
+            except RuntimeError:
+                pass
             self._worker.finished.connect(self._quit_when_worker_stopped)
             self._worker.stop()
         else:
@@ -261,7 +278,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于 BehindYou",
-            "BehindYou v0.1.0\n\n"
+            f"BehindYou {__version__}\n\n"
             "基于 YOLO 的实时身后人员检测系统\n"
             "监控摄像头画面，检测陌生人靠近并发送通知",
         )

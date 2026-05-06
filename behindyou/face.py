@@ -10,10 +10,15 @@ from behindyou.paths import FACE_DATA_FILE
 
 
 @dataclasses.dataclass
-class FaceInfo:
-    """Face detection result with bounding box and confidence."""
+class FaceCacheEntry:
+    embedding: np.ndarray | None = None
+    first_seen: int = 0
+    last_retry: int = 0
 
-    bbox: np.ndarray  # [x1, y1, x2, y2] in full-frame coordinates
+
+@dataclasses.dataclass(frozen=True)
+class FaceInfo:
+    bbox: np.ndarray
     score: float
     embedding: np.ndarray | None = None
 
@@ -22,7 +27,8 @@ def _crop_upper_body(frame: np.ndarray, bbox: np.ndarray, crop_ratio: float = 0.
     h, w = frame.shape[:2]
     x1, y1, x2, y2 = [int(v) for v in bbox]
     crop_bottom = min(y1 + int((y2 - y1) * crop_ratio), h)
-    return frame[max(0, y1):crop_bottom, max(0, x1):min(x2, w)]
+    return frame[max(0, y1) : crop_bottom, max(0, x1) : min(x2, w)]
+
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +57,8 @@ class FaceDetector:
 
 
 class FaceRecognizer:
+    _MAX_YAW = 45.0
+
     def __init__(self) -> None:
         from insightface.app import FaceAnalysis
 
@@ -59,35 +67,10 @@ class FaceRecognizer:
         self.owner_embedding: np.ndarray | None = None
         self._owner_norm: float = 0.0
 
-    def has_frontal_face(
-        self,
-        frame: np.ndarray,
-        person_bbox: np.ndarray,
-        crop_ratio: float = 0.55,
-        min_det_score: float = 0.5,
-    ) -> bool:
-        roi = _crop_upper_body(frame, person_bbox, crop_ratio)
-        if roi.size == 0:
-            return False
-        try:
-            faces = self.app.get(roi)
-        except (RuntimeError, OSError, cv2.error):
-            logger.warning("InsightFace detection 异常", exc_info=True)
-            return False
-        return any(f.det_score >= min_det_score for f in faces)
-
-    def check_frontal_and_get_embedding(
-        self,
-        frame: np.ndarray,
-        person_bbox: np.ndarray,
-        crop_ratio: float = 0.55,
-        min_det_score: float = 0.5,
-    ) -> FaceInfo | None:
-        """Check for frontal face and extract embedding in a single InsightFace call.
-
-        Returns FaceInfo (with bbox in full-frame coords, score, and embedding)
-        if a frontal face is detected, otherwise None.
-        """
+    def _get_frontal_faces(
+        self, frame: np.ndarray, person_bbox: np.ndarray, crop_ratio: float, max_yaw: float
+    ) -> list | None:
+        """Return detected faces filtered to frontal-only, or None on error/empty."""
         roi = _crop_upper_body(frame, person_bbox, crop_ratio)
         if roi.size == 0:
             return None
@@ -98,16 +81,43 @@ class FaceRecognizer:
             return None
         if not faces:
             return None
+        frontal = [
+            f
+            for f in faces
+            if f.pose is None or abs(f.pose[0]) <= max_yaw
+        ]
+        return frontal or None
 
-        best = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+    def has_frontal_face(
+        self,
+        frame: np.ndarray,
+        person_bbox: np.ndarray,
+        crop_ratio: float = 0.55,
+        min_det_score: float = 0.5,
+    ) -> bool:
+        faces = self._get_frontal_faces(frame, person_bbox, crop_ratio, self._MAX_YAW)
+        if not faces:
+            return False
+        return any(f.det_score >= min_det_score for f in faces)
+
+    def check_frontal_and_get_embedding(
+        self,
+        frame: np.ndarray,
+        person_bbox: np.ndarray,
+        crop_ratio: float = 0.55,
+        min_det_score: float = 0.5,
+    ) -> FaceInfo | None:
+        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, self._MAX_YAW)
+        if not frontal:
+            return None
+
+        best = max(frontal, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
         if best.det_score < min_det_score:
             return None
 
-        # Convert face bbox from ROI coordinates to full-frame coordinates
-        x1, y1 = int(person_bbox[0]), int(person_bbox[1])
-        roi_y1 = max(0, y1)
-        roi_x1 = max(0, x1)
-        face_abs = best.bbox + np.array([roi_x1, roi_y1, roi_x1, roi_y1])
+        crop_y1 = max(0, int(person_bbox[1]))
+        crop_x1 = max(0, int(person_bbox[0]))
+        face_abs = best.bbox + np.array([crop_x1, crop_y1, crop_x1, crop_y1])
 
         return FaceInfo(
             bbox=face_abs.astype(int),
@@ -121,17 +131,10 @@ class FaceRecognizer:
         person_bbox: np.ndarray,
         crop_ratio: float = 0.55,
     ) -> np.ndarray | None:
-        roi = _crop_upper_body(frame, person_bbox, crop_ratio)
-        if roi.size == 0:
+        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, self._MAX_YAW)
+        if not frontal:
             return None
-        try:
-            faces = self.app.get(roi)
-        except (RuntimeError, OSError, cv2.error):
-            logger.warning("InsightFace 推理异常", exc_info=True)
-            return None
-        if not faces:
-            return None
-        return faces[0].embedding
+        return frontal[0].embedding
 
     def set_owner_embedding(self, embedding: np.ndarray) -> None:
         self.owner_embedding = embedding.copy()
@@ -161,7 +164,9 @@ class FaceRecognizer:
         try:
             self.owner_embedding = np.load(str(FACE_DATA_FILE))
             if self.owner_embedding.ndim != 1:
-                logger.warning("人脸数据格式异常（shape=%s），将重新采集", self.owner_embedding.shape)
+                logger.warning(
+                    "人脸数据格式异常（shape=%s），将重新采集", self.owner_embedding.shape
+                )
                 self.owner_embedding = None
                 return False
             self._owner_norm = float(np.linalg.norm(self.owner_embedding))
@@ -176,26 +181,26 @@ class FaceRecognizer:
         frame: np.ndarray,
         bbox: np.ndarray,
         tid: int,
-        cache: dict[int, np.ndarray | None],
-        retry_map: dict[int, int],
+        cache: dict[int, FaceCacheEntry],
         frame_count: int,
         retry_interval: int,
         crop_ratio: float = 0.55,
         initial_delay: int = 3,
     ) -> np.ndarray | None:
         if tid not in cache:
-            cache[tid] = None
-            retry_map[tid] = frame_count
+            cache[tid] = FaceCacheEntry(first_seen=frame_count)
             return None
 
-        if cache[tid] is None:
-            first_seen = retry_map.get(tid, frame_count)
-            if frame_count - first_seen < initial_delay:
-                return None
-            if frame_count - retry_map.get(tid, 0) >= retry_interval:
-                emb = self.get_embedding(frame, bbox, crop_ratio)
-                cache[tid] = emb
-                if emb is None:
-                    retry_map[tid] = frame_count
+        entry = cache[tid]
+        if entry.embedding is not None:
+            return entry.embedding
 
-        return cache.get(tid)
+        if frame_count - entry.first_seen <= initial_delay:
+            return None
+
+        if entry.last_retry == entry.first_seen or frame_count - entry.last_retry >= retry_interval:
+            emb = self.get_embedding(frame, bbox, crop_ratio)
+            entry.embedding = emb
+            entry.last_retry = frame_count
+
+        return entry.embedding

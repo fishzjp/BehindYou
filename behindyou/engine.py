@@ -13,8 +13,8 @@ import supervision as sv
 
 from behindyou.config import Config
 from behindyou.detection import detect_people, load_model
-from behindyou.face import FaceDetector, FaceInfo, FaceRecognizer
-from behindyou.notification import save_screenshot, send_notification
+from behindyou.face import FaceDetector, FaceCacheEntry, FaceInfo, FaceRecognizer
+from behindyou.notification import save_screenshot, send_notification_async
 from behindyou.paths import MODEL_FILE, PROJECT_ROOT
 from behindyou.tracking import (
     box_center,
@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_LABEL_INTRUDER = "INTRUDER"
+
 # --- Annotators (module-level, shared) ---
 
 _box_annotator = sv.BoxAnnotator(thickness=2)
@@ -39,11 +41,11 @@ _label_annotator = sv.LabelAnnotator(
     text_padding=4,
 )
 _red_box_annotator = sv.BoxAnnotator(color=sv.Color.RED, thickness=2)
-_red_label_annotator = sv.LabelAnnotator(
-    text_scale=1.0, text_thickness=2, color=sv.Color.RED
-)
+_red_label_annotator = sv.LabelAnnotator(text_scale=1.0, text_thickness=2, color=sv.Color.RED)
 _face_box_annotator = sv.BoxAnnotator(
-    color=sv.Color.GREEN, thickness=2, color_lookup=sv.ColorLookup.INDEX,
+    color=sv.Color.GREEN,
+    thickness=2,
+    color_lookup=sv.ColorLookup.INDEX,
 )
 _face_label_annotator = sv.LabelAnnotator(
     text_scale=1.0,
@@ -58,7 +60,7 @@ _face_label_annotator = sv.LabelAnnotator(
 # --- Data classes ---
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class FrameResult:
     annotated_frame: np.ndarray
     detections: sv.Detections
@@ -80,21 +82,20 @@ class _LoopState:
     ema_skip_count: int = 0
     last_notify_time: float = 0.0
     track_persistence: dict[int, int] = dataclasses.field(default_factory=dict)
-    face_cache: dict[int, np.ndarray | None] = dataclasses.field(
-        default_factory=dict
-    )
-    face_retry_frame: dict[int, int] = dataclasses.field(default_factory=dict)
+    face_cache: dict[int, FaceCacheEntry] = dataclasses.field(default_factory=dict)
 
     def adopt_as_self(self, tid: int, xyxy: np.ndarray) -> None:
         old_self_id = self.self_id
         self.self_id = tid
         self.ema_box = xyxy.copy()
         self.ema_skip_count = 0
-        for d in (self.track_persistence, self.face_cache, self.face_retry_frame):
-            d.pop(old_self_id, None)
+        self.track_persistence.pop(old_self_id, None)
+        self.face_cache.pop(old_self_id, None)
         self.track_persistence.pop(tid, None)
         self.face_cache.pop(tid, None)
-        self.face_retry_frame.pop(tid, None)
+
+    def recompute_min_box_area(self, frame_h: int, frame_w: int) -> None:
+        self.min_box_area = frame_h * frame_w * self.config.min_area
 
 
 # --- Pure processing functions ---
@@ -131,87 +132,95 @@ def process_frame(
         tid = int(tracker_ids[i])
         current_tracks.add(tid)
 
-        is_self = tid == state.self_id or point_in_box(
-            box_center(xyxy_f), state.ema_box
-        )
-        if (
-            not is_self
-            and state.face_recognizer is not None
-            and state.face_recognizer.has_owner
-        ):
+        is_self = tid == state.self_id or point_in_box(box_center(xyxy_f), state.ema_box)
+        if not is_self and state.face_recognizer is not None and state.face_recognizer.has_owner:
             emb = state.face_recognizer.get_cached_embedding(
-                frame,
-                xyxy_f,
-                tid,
-                state.face_cache,
-                state.face_retry_frame,
-                state.frame_count,
-                config.face_retry_interval,
-                config.face_crop_ratio,
+                frame, xyxy_f, tid, state.face_cache, state.frame_count,
+                config.face_retry_interval, config.face_crop_ratio,
             )
-            if emb is not None and state.face_recognizer.is_owner(
-                emb, config.face_match_threshold
-            ):
+            if emb is not None and state.face_recognizer.is_owner(emb, config.face_match_threshold):
                 is_self = True
-                state.adopt_as_self(tid, xyxy_f)
-                logger.info("人脸匹配成功：主人重入，新 ID=%d", tid)
+                if tid != state.self_id:
+                    state.adopt_as_self(tid, xyxy_f)
+                    logger.info("人脸匹配成功：主人重入，新 ID=%d", tid)
 
         if is_self:
-            if is_reasonable_shift(state.ema_box, xyxy_f, config.ema_max_shift):
-                state.ema_box = update_ema(state.ema_box, xyxy_f, config.ema_alpha)
-                state.ema_skip_count = 0
-                if tid != state.self_id:
-                    state.self_id = tid
-            else:
-                state.ema_skip_count += 1
-                if state.ema_skip_count >= config.ema_max_skips:
-                    state.adopt_as_self(tid, xyxy_f)
+            _update_self_track(state, tid, xyxy_f)
             continue
 
         state.track_persistence[tid] = state.track_persistence.get(tid, 0) + 1
-        if state.track_persistence[tid] >= config.persistence:
-            if _scalar_iou(xyxy_f, state.ema_box) > config.self_iou_threshold:
-                state.adopt_as_self(tid, xyxy_f)
-                continue
-            # Face gate: when no_face_check is True, skip all face filtering
-            if not config.no_face_check:
-                # If embedding already cached and confirmed non-owner, skip face gate
-                has_cached_non_owner = False
-                if (
-                    state.face_recognizer is not None
-                    and state.face_recognizer.has_owner
-                ):
-                    cached_emb = state.face_cache.get(tid)
-                    if cached_emb is not None:
-                        has_cached_non_owner = True
+        if state.track_persistence[tid] < config.persistence:
+            continue
 
-                if not has_cached_non_owner:
-                    # Use InsightFace for frontal face check + embedding in one call
-                    if state.face_recognizer is not None:
-                        face_info = state.face_recognizer.check_frontal_and_get_embedding(
-                            frame, xyxy_f, config.face_crop_ratio, config.face_det_score
-                        )
-                        if face_info is None:
-                            continue
-                        face_boxes.append(face_info)
-                        if face_info.embedding is not None and state.face_recognizer.has_owner:
-                            state.face_cache[tid] = face_info.embedding
-                    elif state.face_detector is not None:
-                        if not state.face_detector.has_frontal_face(
-                            frame, xyxy_f, config.face_min_size, config.face_crop_ratio
-                        ):
-                            continue
-                    else:
-                        continue
+        if _scalar_iou(xyxy_f, state.ema_box) > config.self_iou_threshold:
+            state.adopt_as_self(tid, xyxy_f)
+            continue
+
+        if _classify_stranger(frame, xyxy_f, tid, state, face_boxes):
             intruder_boxes.append(xyxy_f.astype(int))
 
     for tid in list(state.track_persistence):
         if tid not in current_tracks:
             del state.track_persistence[tid]
             state.face_cache.pop(tid, None)
-            state.face_retry_frame.pop(tid, None)
 
     return intruder_boxes, face_boxes
+
+
+def _update_self_track(state: _LoopState, tid: int, xyxy: np.ndarray) -> None:
+    config = state.config
+    if is_reasonable_shift(state.ema_box, xyxy, config.ema_max_shift):
+        state.ema_box = update_ema(state.ema_box, xyxy, config.ema_alpha)
+        state.ema_skip_count = 0
+        if tid != state.self_id:
+            state.self_id = tid
+    else:
+        state.ema_skip_count += 1
+        if state.ema_skip_count >= config.ema_max_skips:
+            state.adopt_as_self(tid, xyxy)
+
+
+def _classify_stranger(
+    frame: np.ndarray,
+    xyxy: np.ndarray,
+    tid: int,
+    state: _LoopState,
+    face_boxes: list[FaceInfo],
+) -> bool:
+    config = state.config
+    if config.no_face_check:
+        return True
+
+    recognizer = state.face_recognizer
+    if recognizer is not None and recognizer.has_owner:
+        entry = state.face_cache.get(tid)
+        if entry is not None and entry.embedding is not None:
+            return True
+
+    if recognizer is not None:
+        face_info = recognizer.check_frontal_and_get_embedding(
+            frame, xyxy, config.face_crop_ratio, config.face_det_score,
+        )
+        if face_info is None:
+            return False
+        face_boxes.append(face_info)
+        if face_info.embedding is not None and recognizer.has_owner:
+            entry = state.face_cache.get(tid)
+            if entry is not None:
+                entry.embedding = face_info.embedding
+                entry.last_retry = state.frame_count
+            else:
+                state.face_cache[tid] = FaceCacheEntry(
+                    embedding=face_info.embedding,
+                    first_seen=state.frame_count,
+                    last_retry=state.frame_count,
+                )
+        return True
+    elif state.face_detector is not None:
+        return state.face_detector.has_frontal_face(
+            frame, xyxy, config.face_min_size, config.face_crop_ratio,
+        )
+    return False
 
 
 def annotate_frame(
@@ -225,26 +234,19 @@ def annotate_frame(
     tracker_ids = detections.tracker_id
     confidences = detections.confidence
     if tracker_ids is not None and confidences is not None:
-        labels = [
-            f"person #{int(tid)} {conf:.2f}"
-            for tid, conf in zip(tracker_ids, confidences)
-        ]
-        annotated = _label_annotator.annotate(
-            scene=annotated, detections=detections, labels=labels
-        )
+        labels = [f"person #{int(tid)} {conf:.2f}" for tid, conf in zip(tracker_ids, confidences)]
+        annotated = _label_annotator.annotate(scene=annotated, detections=detections, labels=labels)
 
     if intruder_boxes:
         intruder_det = sv.Detections(
             xyxy=np.array(intruder_boxes, dtype=np.float32),
             class_id=np.zeros(len(intruder_boxes), dtype=int),
         )
-        annotated = _red_box_annotator.annotate(
-            scene=annotated, detections=intruder_det
-        )
+        annotated = _red_box_annotator.annotate(scene=annotated, detections=intruder_det)
         annotated = _red_label_annotator.annotate(
             scene=annotated,
             detections=intruder_det,
-            labels=["INTRUDER"] * len(intruder_boxes),
+            labels=[_LABEL_INTRUDER] * len(intruder_boxes),
         )
 
     if face_info_list:
@@ -309,8 +311,7 @@ class DetectionEngine:
     @property
     def has_saved_embedding(self) -> bool:
         return (
-            self._face_recognizer is not None
-            and self._face_recognizer.owner_embedding is not None
+            self._face_recognizer is not None and self._face_recognizer.owner_embedding is not None
         )
 
     def open_camera(self, camera_index: int = 0) -> bool:
@@ -319,7 +320,9 @@ class DetectionEngine:
         self._cap = cv2.VideoCapture(camera_index)
         if not self._cap.isOpened():
             logger.error("无法打开摄像头 (index=%d)", camera_index)
+            self._cap = None
             return False
+        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         return True
 
     def calibrate(
@@ -392,18 +395,14 @@ class DetectionEngine:
             return None, None
 
         if len(unique_ids) > 1:
-            logger.warning(
-                "检测到 %d 个不同的人，校准结果可能不准确", len(unique_ids)
-            )
+            logger.warning("检测到 %d 个不同的人，校准结果可能不准确", len(unique_ids))
 
         most_common = Counter(track_ids).most_common(2)
         self_id = most_common[0][0]
         if len(most_common) > 1:
             ratio = most_common[0][1] / len(track_ids)
             if ratio < 0.6:
-                logger.warning(
-                    "主人 ID 置信度偏低 (%.0f%%)，校准可能不准确", ratio * 100
-                )
+                logger.warning("主人 ID 置信度偏低 (%.0f%%)，校准可能不准确", ratio * 100)
         self_boxes = [b for b, t in zip(boxes, track_ids) if t == self_id]
         avg_box = np.mean(self_boxes, axis=0)
 
@@ -412,13 +411,9 @@ class DetectionEngine:
             if owner_embs:
                 face_recognizer.set_owner_embedding(np.mean(owner_embs, axis=0))
                 face_recognizer.save_embedding()
-                logger.info(
-                    "人脸特征已采集（%d/%d 帧成功）", len(owner_embs), sample_frames
-                )
+                logger.info("人脸特征已采集（%d/%d 帧成功）", len(owner_embs), sample_frames)
             else:
-                logger.warning(
-                    "校准期间未能采集到人脸特征，人脸识别回退将不可用"
-                )
+                logger.warning("校准期间未能采集到人脸特征，人脸识别回退将不可用")
 
         logger.info(
             "校准完成：自身 ID=%d，位置 [%.0f,%.0f,%.0f,%.0f]",
@@ -474,7 +469,7 @@ class DetectionEngine:
             now = time.monotonic()
             if now - state.last_notify_time >= config.cooldown:
                 screenshot_path = save_screenshot(annotated)
-                send_notification(len(intruder_boxes), screenshot_path)
+                send_notification_async(len(intruder_boxes), screenshot_path)
                 state.last_notify_time = now
                 should_notify = True
 
@@ -491,6 +486,11 @@ class DetectionEngine:
         self._config = new_config
         if self._state is not None:
             self._state.config = new_config
+            if self._cap is not None:
+                self._state.recompute_min_box_area(
+                    int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                    int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                )
 
     def stop(self) -> None:
         if self._cap is not None:

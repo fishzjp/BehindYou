@@ -6,7 +6,7 @@ import time
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QObject, QThread, Signal, Slot
 
 from behindyou.config import Config
 from behindyou.engine import DetectionEngine
@@ -32,11 +32,17 @@ class DetectionWorker(QObject):
         self._thread: QThread | None = None
         self._engine: DetectionEngine | None = None
         self._stop_event = threading.Event()
+        self._frame_pending = threading.Event()
+        self._config_dirty = threading.Event()
         self.config_requested.connect(self._apply_config)
 
     def start(self) -> None:
         if self._thread is not None:
-            return
+            if self._thread.isRunning():
+                return
+            # Thread finished but cleanup hasn't run yet
+            self._thread.wait()
+            self._thread = None
         self._stop_event.clear()
         self._thread = QThread()
         self.moveToThread(self._thread)
@@ -60,9 +66,7 @@ class DetectionWorker(QObject):
 
             self_id, ema_box = self._engine.calibrate(
                 quick=has_saved,
-                progress_cb=lambda cur, tot, msg: self.calibration_progress.emit(
-                    cur, tot, msg
-                ),
+                progress_cb=lambda cur, tot, msg: self.calibration_progress.emit(cur, tot, msg),
                 cancel_check=self._is_stopped,
             )
 
@@ -90,16 +94,26 @@ class DetectionWorker(QObject):
 
                 result = self._engine.step(frame)
 
+                self._frame_pending.clear()
                 self.frame_ready.emit(result.annotated_frame)
 
                 if result.should_notify:
-                    self.intrusion_detected.emit(
-                        len(result.intruder_boxes), result.screenshot_path
-                    )
+                    self.intrusion_detected.emit(len(result.intruder_boxes), result.screenshot_path)
 
                 elapsed = time.monotonic() - frame_start
                 if elapsed < target_interval:
-                    self._stop_event.wait(target_interval - elapsed)
+                    remaining = target_interval - elapsed
+                    # Only busy-loop with processEvents if there's a pending config update
+                    if self._config_dirty.is_set():
+                        self._config_dirty.clear()
+                        deadline = time.monotonic() + remaining
+                        while not self._stop_event.is_set():
+                            QCoreApplication.processEvents()
+                            time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+                            if time.monotonic() >= deadline:
+                                break
+                    else:
+                        self._stop_event.wait(remaining)
 
         except (RuntimeError, OSError, cv2.error) as e:
             logger.exception("检测工作线程异常")
@@ -121,6 +135,7 @@ class DetectionWorker(QObject):
         self._config = new_config
         if self._engine is not None:
             self._engine.update_config(new_config)
+        self._config_dirty.set()
 
     @Slot()
     def stop(self) -> None:
