@@ -381,7 +381,11 @@ class DetectionEngine:
                 if not quick and face_recognizer is not None:
                     if tid not in embeddings_by_id:
                         embeddings_by_id[tid] = []
-                    emb = face_recognizer.get_embedding(frame, xyxy)
+                    try:
+                        emb = face_recognizer.get_embedding(frame, xyxy)
+                    except Exception:
+                        logger.warning("校准期间人脸特征提取失败", exc_info=True)
+                        emb = None
                     if emb is not None:
                         embeddings_by_id[tid].append(emb)
                         frame_got_face = True
