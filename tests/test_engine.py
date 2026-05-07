@@ -148,7 +148,9 @@ def test_classify_stranger_recognizer_finds_face():
     recognizer.has_owner = False
     face_info = FaceInfo(bbox=_bbox(0, 0, 50, 50), score=0.9)
     recognizer.check_frontal_and_get_embedding.return_value = face_info
-    state = _make_state(config=Config(), face_recognizer=recognizer, face_cache={2: FaceCacheEntry()})
+    state = _make_state(
+        config=Config(), face_recognizer=recognizer, face_cache={2: FaceCacheEntry()}
+    )
     face_boxes: list[FaceInfo] = []
     assert _classify_stranger(_make_frame(), _bbox(0, 0, 100, 100), 2, state, face_boxes)
     assert face_boxes[0] is face_info
@@ -160,7 +162,9 @@ def test_classify_stranger_recognizer_caches_embedding():
     recognizer.has_owner = True
     face_info = FaceInfo(bbox=_bbox(0, 0, 50, 50), score=0.9, embedding=emb)
     recognizer.check_frontal_and_get_embedding.return_value = face_info
-    state = _make_state(config=Config(), face_recognizer=recognizer, face_cache={2: FaceCacheEntry()})
+    state = _make_state(
+        config=Config(), face_recognizer=recognizer, face_cache={2: FaceCacheEntry()}
+    )
     face_boxes: list[FaceInfo] = []
     _classify_stranger(_make_frame(), _bbox(0, 0, 100, 100), 2, state, face_boxes)
     assert state.face_cache[2].embedding is not None
@@ -171,7 +175,9 @@ def test_classify_stranger_recognizer_no_face_returns_false():
     recognizer = MagicMock()
     recognizer.has_owner = True
     recognizer.check_frontal_and_get_embedding.return_value = None
-    state = _make_state(config=Config(), face_recognizer=recognizer, face_cache={2: FaceCacheEntry()})
+    state = _make_state(
+        config=Config(), face_recognizer=recognizer, face_cache={2: FaceCacheEntry()}
+    )
     face_boxes: list[FaceInfo] = []
     assert not _classify_stranger(_make_frame(), _bbox(0, 0, 100, 100), 2, state, face_boxes)
 
@@ -332,7 +338,9 @@ def test_process_frame_tracker_swap_no_face_false_alarm():
     recognizer.has_owner = True
     recognizer.get_cached_embedding.return_value = None
     recognizer.check_frontal_and_get_embedding.return_value = None
-    state = _make_state(config=Config(no_face_check=True, persistence=1), face_recognizer=recognizer)
+    state = _make_state(
+        config=Config(no_face_check=True, persistence=1), face_recognizer=recognizer
+    )
     detections = _make_detections([[400, 400, 600, 600]], [5])
     intruders, _ = process_frame(_make_frame(), detections, state)
     assert len(intruders) == 1  # no_face_check=True, so triggers alarm
@@ -346,17 +354,22 @@ def test_process_frame_face_similarity_below_threshold():
     recognizer.check_frontal_and_get_embedding.return_value = FaceInfo(
         bbox=_bbox(400, 400, 500, 500), score=0.9, embedding=np.random.randn(512).astype(np.float32)
     )
-    state = _make_state(config=Config(no_face_check=False, persistence=1), face_recognizer=recognizer)
+    state = _make_state(
+        config=Config(no_face_check=False, persistence=1), face_recognizer=recognizer
+    )
     detections = _make_detections([[400, 400, 600, 600]], [2])
     intruders, _ = process_frame(_make_frame(), detections, state)
     assert len(intruders) == 1  # stranger correctly classified
 
 
-@pytest.mark.parametrize("frames_seen,expected_intruders", [
-    (0, 0),  # persistence=3, 0+1=1 < 3
-    (1, 0),  # 1+1=2 < 3
-    (2, 1),  # 2+1=3 >= 3
-])
+@pytest.mark.parametrize(
+    "frames_seen,expected_intruders",
+    [
+        (0, 0),  # persistence=3, 0+1=1 < 3
+        (1, 0),  # 1+1=2 < 3
+        (2, 1),  # 2+1=3 >= 3
+    ],
+)
 def test_process_frame_persistence_boundary(frames_seen, expected_intruders):
     config = Config(no_face_check=True, persistence=3)
     state = _make_state(config=config)
@@ -373,15 +386,11 @@ def test_process_frame_min_area_boundary():
     # 640*480 = 307200, min_area=0.02 → min_box_area=6144.0
     # box 78*78 = 6084 < 6144, box 79*79 = 6241 > 6144
     state = _make_state(config=Config(no_face_check=True, persistence=1), min_box_area=6144.0)
-    intruders_small, _ = process_frame(
-        frame, _make_detections([[0, 0, 78, 78]], [2]), state
-    )
+    intruders_small, _ = process_frame(frame, _make_detections([[0, 0, 78, 78]], [2]), state)
     assert len(intruders_small) == 0
 
     state2 = _make_state(config=Config(no_face_check=True, persistence=1), min_box_area=6144.0)
-    intruders_big, _ = process_frame(
-        frame, _make_detections([[0, 0, 79, 79]], [2]), state2
-    )
+    intruders_big, _ = process_frame(frame, _make_detections([[0, 0, 79, 79]], [2]), state2)
     assert len(intruders_big) == 1
 
 
@@ -405,7 +414,11 @@ def test_process_frame_ema_max_skips_boundary():
     state = _make_state(config=config, ema_skip_count=2)
     far_box = _bbox(500, 500, 700, 700)
     # 3rd unreasonable shift (skip_count becomes 3 >= max_skips=3)
-    process_frame(_make_frame(), _make_detections([[far_box[0], far_box[1], far_box[2], far_box[3]]], [1]), state)
+    process_frame(
+        _make_frame(),
+        _make_detections([[far_box[0], far_box[1], far_box[2], far_box[3]]], [1]),
+        state,
+    )
     assert state.ema_skip_count == 0  # force-adopted
 
 

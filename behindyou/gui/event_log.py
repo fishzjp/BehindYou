@@ -10,12 +10,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from behindyou.gui.styles import COLOR_ACCENT
+from behindyou.gui.styles import current_colors
 
 
 class EventLog(QWidget):
@@ -26,6 +27,8 @@ class EventLog(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setMinimumHeight(160)
+        self.setAccessibleName("事件记录")
+        self._accent_color = current_colors()["accent"]
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -37,16 +40,15 @@ class EventLog(QWidget):
         title_layout.setContentsMargins(8, 6, 8, 6)
 
         title = QLabel("事件记录")
-        title.setStyleSheet("font-weight: 600;")
+        title.setObjectName("event_log_title")
         title_layout.addWidget(title)
         title_layout.addStretch()
 
         self._btn_clear = QPushButton("清空")
+        self._btn_clear.setObjectName("btn_clear")
         self._btn_clear.setFlat(True)
-        self._btn_clear.setStyleSheet(
-            f"QPushButton {{ border: none; color: {COLOR_ACCENT}; font-size: 12px; }}"
-            "QPushButton:hover { text-decoration: underline; }"
-        )
+        self._btn_clear.setAccessibleName("清空事件记录")
+        self._btn_clear.setToolTip("清空所有事件记录")
         self._btn_clear.clicked.connect(self._clear_events)
         title_layout.addWidget(self._btn_clear)
 
@@ -56,12 +58,31 @@ class EventLog(QWidget):
         self._list = QListWidget()
         self._list.setObjectName("event_log_list")
         self._list.setAlternatingRowColors(True)
+        self._list.setAccessibleName("入侵事件列表")
+        self._list.setToolTip("双击带有 [截图] 标记的事件可查看截图")
         self._list.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self._list)
 
+        self._set_placeholder()
+
     _MAX_EVENTS = 500
 
+    _PLACEHOLDER_SENTINEL = False
+
+    def _set_placeholder(self) -> None:
+        self._list.clear()
+        placeholder = QListWidgetItem("暂无入侵事件 — 启动检测后将在此显示记录")
+        placeholder.setFlags(placeholder.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        placeholder.setForeground(QColor(self._accent_color))
+        placeholder.setData(Qt.ItemDataRole.UserRole, self._PLACEHOLDER_SENTINEL)
+        self._list.addItem(placeholder)
+
     def add_event(self, intruder_count: int, screenshot_path: str | None) -> None:
+        if (
+            self._list.count() == 1
+            and self._list.item(0).data(Qt.ItemDataRole.UserRole) is self._PLACEHOLDER_SENTINEL
+        ):
+            self._list.clear()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         text = f"{timestamp} — {intruder_count} 人入侵"
         if screenshot_path:
@@ -69,13 +90,23 @@ class EventLog(QWidget):
         item = QListWidgetItem(text)
         item.setData(Qt.ItemDataRole.UserRole, screenshot_path)
         if screenshot_path:
-            item.setForeground(QColor(COLOR_ACCENT))
+            item.setForeground(QColor(self._accent_color))
         self._list.insertItem(0, item)
         while self._list.count() > self._MAX_EVENTS:
             self._list.takeItem(self._list.count() - 1)
 
     def _clear_events(self) -> None:
-        self._list.clear()
+        if self._list.count() == 0:
+            return
+        reply = QMessageBox.question(
+            self,
+            "确认清空",
+            "确定要清空所有事件记录吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._set_placeholder()
 
     def _on_item_double_clicked(self, item: QListWidgetItem) -> None:
         path = item.data(Qt.ItemDataRole.UserRole)

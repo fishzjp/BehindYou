@@ -45,6 +45,7 @@ class _SliderRow(QWidget):
         layout.setContentsMargins(0, 4, 0, 4)
 
         self._label = QLabel(f"{label}: {int(default) if self._is_int else f'{default:.2f}'}")
+        self._label.setWordWrap(True)
         layout.addWidget(self._label)
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
@@ -52,6 +53,7 @@ class _SliderRow(QWidget):
         self._slider.setMaximum(int(max_val * self._scale))
         self._slider.setValue(int(default * self._scale))
         self._slider.valueChanged.connect(self._on_changed)
+        self._slider.setAccessibleName(label)
         layout.addWidget(self._slider)
 
     def _on_changed(self, raw: int) -> None:
@@ -82,8 +84,9 @@ class SettingsPanel(QScrollArea):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWidgetResizable(True)
-        self.setMinimumWidth(240)
+        self.setMinimumWidth(200)
         self.setMaximumWidth(300)
+        self.setAccessibleName("设置面板")
 
         container = QWidget()
         self._layout = QVBoxLayout(container)
@@ -99,9 +102,15 @@ class SettingsPanel(QScrollArea):
 
         self._btn_start = QPushButton("启动")
         self._btn_start.setObjectName("btn_start")
+        self._btn_start.setAccessibleName("启动检测")
+        self._btn_start.setToolTip("开始检测身后人员 (F5)")
         self._btn_stop = QPushButton("停止")
         self._btn_stop.setObjectName("btn_stop")
+        self._btn_stop.setAccessibleName("停止检测")
+        self._btn_stop.setToolTip("停止检测 (F6)")
         self._btn_calibrate = QPushButton("校准")
+        self._btn_calibrate.setAccessibleName("人脸校准")
+        self._btn_calibrate.setToolTip("重新采集你的人脸数据用于主人识别")
         self._btn_stop.setEnabled(False)
 
         btn_layout.addWidget(self._btn_start)
@@ -118,11 +127,20 @@ class SettingsPanel(QScrollArea):
         basic_group = QGroupBox("设置")
         basic_layout = QVBoxLayout(basic_group)
 
-        self._camera = _SliderRow("摄像头", 0, 10, 0, step=1.0)
-        self._confidence = _SliderRow("灵敏度", 0.1, 1.0, 0.6)
+        self._camera = _SliderRow("摄像头编号", 0, 10, 0, step=1.0)
+        self._camera.setToolTip("摄像头设备编号，0 为默认摄像头")
+        self._confidence = _SliderRow("置信度阈值", 0.1, 1.0, 0.6)
+        self._confidence.setToolTip(
+            "识别置信度阈值 (0.1-1.0)\n值越低越灵敏但误报越多，值越高越严格但可能漏检"
+        )
         self._cooldown = _SliderRow("报警间隔(秒)", 1, 60, 10, step=1.0)
+        self._cooldown.setToolTip("两次报警之间的最短间隔（秒），避免频繁通知")
         self._no_face_check = QCheckBox("关闭人脸验证（任何人靠近都报警）")
+        self._no_face_check.setAccessibleName("关闭人脸验证")
         self._face_det_score = _SliderRow("人脸检测阈值", 0.1, 0.9, 0.8)
+        self._face_det_score.setToolTip(
+            "人脸检测的置信度阈值 (0.1-0.9)\n用于判断检测到的人是否有可见人脸"
+        )
 
         basic_layout.addWidget(self._camera)
         basic_layout.addWidget(self._confidence)

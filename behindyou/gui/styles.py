@@ -1,41 +1,108 @@
-"""Centralized QSS styles for macOS-native light theme."""
+"""Centralized QSS styles with light/dark theme support."""
 
 from __future__ import annotations
 
-# ── macOS light palette colors ────────────────────────────────────────
-COLOR_WINDOW_BG = "#f5f5f7"
-COLOR_PANEL_BG = "#ffffff"
-COLOR_BORDER = "#d2d2d7"
-COLOR_TEXT = "#1d1d1f"
-COLOR_TEXT_SECONDARY = "#86868b"
-COLOR_ACCENT = "#0071e3"
-COLOR_ACCENT_HOVER = "#0077ed"
-COLOR_SUCCESS = "#34c759"
-COLOR_DANGER = "#ff3b30"
-COLOR_DANGER_HOVER = "#ff453a"
-COLOR_SLIDER_GROOVE = "#d2d2d7"
-COLOR_SLIDER_HANDLE = "#ffffff"
-COLOR_ALTERNATE_BG = "#fafafa"
-COLOR_DISABLED_BG = "#f5f5f7"
-COLOR_DISABLED_TEXT = "#a1a1a6"
-COLOR_HOVER_BG = "#e8e8ed"
-COLOR_PRESSED_BG = "#d2d2d7"
-COLOR_ACCENT_PRESSED = "#006edb"
-COLOR_ACCENT_DISABLED = "#a1c9f2"
-COLOR_VIDEO_BG = "#1e1e1e"
-COLOR_ROW_BORDER = "#f0f0f2"
-COLOR_SELECTED_BG = "#e8f0fe"
-COLOR_STOP_HOVER_BG = "#fff0f0"
-COLOR_STOP_PRESSED_BG = "#ffe0e0"
-COLOR_STOP_DISABLED_TEXT = "#d4a0a0"
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QWidget
+
+_LIGHT_COLORS: dict[str, str] = {
+    "window_bg": "#f5f5f7",
+    "panel_bg": "#ffffff",
+    "border": "#d2d2d7",
+    "text": "#1d1d1f",
+    "text_secondary": "#86868b",
+    "accent": "#0071e3",
+    "accent_hover": "#0077ed",
+    "success": "#34c759",
+    "danger": "#ff3b30",
+    "danger_hover": "#ff453a",
+    "slider_groove": "#d2d2d7",
+    "slider_handle": "#ffffff",
+    "alternate_bg": "#fafafa",
+    "disabled_bg": "#f5f5f7",
+    "disabled_text": "#a1a1a6",
+    "hover_bg": "#e8e8ed",
+    "pressed_bg": "#d2d2d7",
+    "accent_pressed": "#006edb",
+    "accent_disabled": "#a1c9f2",
+    "video_bg": "#1e1e1e",
+    "row_border": "#f0f0f2",
+    "selected_bg": "#e8f0fe",
+    "stop_hover_bg": "#fff0f0",
+    "stop_pressed_bg": "#ffe0e0",
+    "stop_disabled_text": "#d4a0a0",
+}
+
+_DARK_COLORS: dict[str, str] = {
+    "window_bg": "#1e1e1e",
+    "panel_bg": "#2c2c2e",
+    "border": "#3a3a3c",
+    "text": "#ffffff",
+    "text_secondary": "#98989d",
+    "accent": "#0a84ff",
+    "accent_hover": "#409cff",
+    "success": "#30d158",
+    "danger": "#ff453a",
+    "danger_hover": "#ff6961",
+    "slider_groove": "#3a3a3c",
+    "slider_handle": "#e0e0e0",
+    "alternate_bg": "#2c2c2e",
+    "disabled_bg": "#2c2c2e",
+    "disabled_text": "#636366",
+    "hover_bg": "#3a3a3c",
+    "pressed_bg": "#48484a",
+    "accent_pressed": "#0070c0",
+    "accent_disabled": "#3a6b99",
+    "video_bg": "#000000",
+    "row_border": "#333333",
+    "selected_bg": "#2a4a6b",
+    "stop_hover_bg": "#3a2020",
+    "stop_pressed_bg": "#4a2020",
+    "stop_disabled_text": "#6b4040",
+}
 
 
-def build_stylesheet() -> str:
-    """Return the global QSS stylesheet for the application."""
+_current_dark = False
+
+
+def set_theme(dark: bool) -> None:
+    global _current_dark
+    _current_dark = dark
+
+
+def current_colors() -> dict[str, str]:
+    return _DARK_COLORS if _current_dark else _LIGHT_COLORS
+
+
+def repolish(widget: QWidget) -> None:
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+    widget.update()
+
+
+def build_palette(dark: bool = False) -> QPalette:
+    c = _DARK_COLORS if dark else _LIGHT_COLORS
+    pal = QPalette()
+    pal.setColor(QPalette.ColorRole.Window, QColor(c["window_bg"]))
+    pal.setColor(QPalette.ColorRole.WindowText, QColor(c["text"]))
+    pal.setColor(QPalette.ColorRole.Base, QColor(c["panel_bg"]))
+    pal.setColor(QPalette.ColorRole.AlternateBase, QColor(c["alternate_bg"]))
+    pal.setColor(QPalette.ColorRole.Text, QColor(c["text"]))
+    pal.setColor(QPalette.ColorRole.Button, QColor(c["panel_bg"]))
+    pal.setColor(QPalette.ColorRole.ButtonText, QColor(c["text"]))
+    pal.setColor(QPalette.ColorRole.Highlight, QColor(c["accent"]))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(c["text_secondary"]))
+    pal.setColor(QPalette.ColorRole.Mid, QColor(c["border"]))
+    return pal
+
+
+def build_stylesheet(*, dark: bool = False) -> str:
+    c = _DARK_COLORS if dark else _LIGHT_COLORS
     return f"""
     /* ── Global ─────────────────────────────────────────────────── */
     QWidget {{
-        color: {COLOR_TEXT};
+        color: {c["text"]};
         font-size: 13px;
     }}
 
@@ -46,12 +113,12 @@ def build_stylesheet() -> str:
         margin: 0;
     }}
     QScrollBar::handle:vertical {{
-        background: {COLOR_BORDER};
+        background: {c["border"]};
         border-radius: 4px;
         min-height: 30px;
     }}
     QScrollBar::handle:vertical:hover {{
-        background: {COLOR_DISABLED_TEXT};
+        background: {c["disabled_text"]};
     }}
     QScrollBar::add-line:vertical,
     QScrollBar::sub-line:vertical,
@@ -66,12 +133,12 @@ def build_stylesheet() -> str:
         margin: 0;
     }}
     QScrollBar::handle:horizontal {{
-        background: {COLOR_BORDER};
+        background: {c["border"]};
         border-radius: 4px;
         min-width: 30px;
     }}
     QScrollBar::handle:horizontal:hover {{
-        background: {COLOR_DISABLED_TEXT};
+        background: {c["disabled_text"]};
     }}
     QScrollBar::add-line:horizontal,
     QScrollBar::sub-line:horizontal,
@@ -83,73 +150,121 @@ def build_stylesheet() -> str:
 
     /* ── Settings Panel ─────────────────────────────────────────── */
     SettingsPanel {{
-        background: {COLOR_PANEL_BG};
-        border-right: 1px solid {COLOR_BORDER};
+        background: {c["panel_bg"]};
+        border-right: 1px solid {c["border"]};
     }}
     SettingsPanel > QWidget {{
-        background: {COLOR_PANEL_BG};
+        background: {c["panel_bg"]};
     }}
 
     /* ── Buttons ────────────────────────────────────────────────── */
     QPushButton {{
-        border: 1px solid {COLOR_BORDER};
+        border: 1px solid {c["border"]};
         border-radius: 6px;
         padding: 6px 14px;
-        background: {COLOR_PANEL_BG};
+        background: {c["panel_bg"]};
         font-size: 13px;
         min-height: 20px;
     }}
     QPushButton:hover {{
-        background: {COLOR_HOVER_BG};
+        background: {c["hover_bg"]};
     }}
     QPushButton:pressed {{
-        background: {COLOR_PRESSED_BG};
+        background: {c["pressed_bg"]};
     }}
     QPushButton:disabled {{
-        background: {COLOR_DISABLED_BG};
-        color: {COLOR_DISABLED_TEXT};
-        border-color: {COLOR_HOVER_BG};
+        background: {c["disabled_bg"]};
+        color: {c["disabled_text"]};
+        border-color: {c["hover_bg"]};
     }}
 
     QPushButton#btn_start {{
-        background: {COLOR_ACCENT};
+        background: {c["accent"]};
         color: white;
         border: none;
         font-weight: 600;
     }}
     QPushButton#btn_start:hover {{
-        background: {COLOR_ACCENT_HOVER};
+        background: {c["accent_hover"]};
     }}
     QPushButton#btn_start:pressed {{
-        background: {COLOR_ACCENT_PRESSED};
+        background: {c["accent_pressed"]};
     }}
     QPushButton#btn_start:disabled {{
-        background: {COLOR_ACCENT_DISABLED};
+        background: {c["accent_disabled"]};
         color: white;
     }}
 
     QPushButton#btn_stop {{
-        border: 1px solid {COLOR_DANGER};
-        color: {COLOR_DANGER};
-        background: {COLOR_PANEL_BG};
+        border: 1px solid {c["danger"]};
+        color: {c["danger"]};
+        background: {c["panel_bg"]};
     }}
     QPushButton#btn_stop:hover {{
-        background: {COLOR_STOP_HOVER_BG};
+        background: {c["stop_hover_bg"]};
     }}
     QPushButton#btn_stop:pressed {{
-        background: {COLOR_STOP_PRESSED_BG};
+        background: {c["stop_pressed_bg"]};
     }}
     QPushButton#btn_stop:disabled {{
-        background: {COLOR_DISABLED_BG};
-        color: {COLOR_STOP_DISABLED_TEXT};
-        border-color: {COLOR_HOVER_BG};
+        background: {c["disabled_bg"]};
+        color: {c["stop_disabled_text"]};
+        border-color: {c["hover_bg"]};
+    }}
+
+    QPushButton#btn_clear {{
+        border: none;
+        color: {c["accent"]};
+        font-size: 12px;
+    }}
+    QPushButton#btn_clear:hover {{
+        text-decoration: underline;
+    }}
+
+    /* ── Status dot ─────────────────────────────────────────────── */
+    QLabel#status_dot {{
+        font-size: 14px;
+    }}
+    QLabel#status_dot[status="idle"] {{
+        color: {c["text_secondary"]};
+    }}
+    QLabel#status_dot[status="running"] {{
+        color: {c["success"]};
+    }}
+
+    /* ── Calibration guidance ───────────────────────────────────── */
+    QLabel#calibration_guidance {{
+        color: {c["text_secondary"]};
+        font-size: 12px;
+    }}
+
+    /* ── Calibration instruction ────────────────────────────────── */
+    QLabel#calibration_instruction {{
+        font-size: 16px;
+        font-weight: 600;
+        margin: 8px 0;
+    }}
+    QLabel#calibration_instruction[cal_state="success"] {{
+        color: {c["success"]};
+    }}
+    QLabel#calibration_instruction[cal_state="failure"] {{
+        color: {c["danger"]};
+    }}
+
+    QLabel#calibration_status {{
+        color: {c["text_secondary"]};
+    }}
+
+    /* ── Event log title ────────────────────────────────────────── */
+    QLabel#event_log_title {{
+        font-weight: 600;
     }}
 
     /* ── GroupBox (no border, left accent bar) ──────────────────── */
     QGroupBox {{
-        background: {COLOR_PANEL_BG};
+        background: {c["panel_bg"]};
         border: none;
-        border-left: 3px solid {COLOR_ACCENT};
+        border-left: 3px solid {c["accent"]};
         margin-top: 12px;
         padding: 8px 8px 8px 12px;
         font-weight: 600;
@@ -159,28 +274,28 @@ def build_stylesheet() -> str:
         subcontrol-origin: margin;
         subcontrol-position: top left;
         padding: 0 4px;
-        color: {COLOR_TEXT};
+        color: {c["text"]};
     }}
 
     /* ── Slider ─────────────────────────────────────────────────── */
     QSlider::groove:horizontal {{
         height: 4px;
-        background: {COLOR_SLIDER_GROOVE};
+        background: {c["slider_groove"]};
         border-radius: 2px;
     }}
     QSlider::handle:horizontal {{
-        background: {COLOR_SLIDER_HANDLE};
-        border: 1px solid {COLOR_BORDER};
+        background: {c["slider_handle"]};
+        border: 1px solid {c["border"]};
         width: 16px;
         height: 16px;
         margin: -6px 0;
         border-radius: 8px;
     }}
     QSlider::handle:horizontal:hover {{
-        border-color: {COLOR_ACCENT};
+        border-color: {c["accent"]};
     }}
     QSlider::sub-page:horizontal {{
-        background: {COLOR_ACCENT};
+        background: {c["accent"]};
         border-radius: 2px;
     }}
 
@@ -192,84 +307,84 @@ def build_stylesheet() -> str:
     QCheckBox::indicator {{
         width: 16px;
         height: 16px;
-        border: 1px solid {COLOR_BORDER};
+        border: 1px solid {c["border"]};
         border-radius: 4px;
-        background: {COLOR_PANEL_BG};
+        background: {c["panel_bg"]};
     }}
     QCheckBox::indicator:checked {{
-        background: {COLOR_ACCENT};
-        border-color: {COLOR_ACCENT};
+        background: {c["accent"]};
+        border-color: {c["accent"]};
     }}
     QCheckBox::indicator:hover {{
-        border-color: {COLOR_ACCENT};
+        border-color: {c["accent"]};
     }}
 
     /* ── Video Display ──────────────────────────────────────────── */
     VideoDisplay {{
-        background-color: {COLOR_VIDEO_BG};
+        background-color: {c["video_bg"]};
         border-radius: 8px;
-        color: {COLOR_TEXT_SECONDARY};
+        color: {c["text_secondary"]};
         font-size: 15px;
     }}
 
     /* ── Event Log ──────────────────────────────────────────────── */
     EventLog {{
-        background: {COLOR_PANEL_BG};
-        border: 1px solid {COLOR_BORDER};
+        background: {c["panel_bg"]};
+        border: 1px solid {c["border"]};
         border-radius: 8px;
     }}
     EventLog QListWidget#event_log_list::item {{
         padding: 6px 8px;
-        border-bottom: 1px solid {COLOR_ROW_BORDER};
+        border-bottom: 1px solid {c["row_border"]};
     }}
     EventLog QListWidget#event_log_list::item:alternate {{
-        background: {COLOR_ALTERNATE_BG};
+        background: {c["alternate_bg"]};
     }}
     EventLog QListWidget#event_log_list::item:selected {{
-        background: {COLOR_SELECTED_BG};
-        color: {COLOR_TEXT};
+        background: {c["selected_bg"]};
+        color: {c["text"]};
     }}
     EventLog QListWidget#event_log_list::item:hover {{
-        background: {COLOR_ROW_BORDER};
+        background: {c["row_border"]};
     }}
 
     /* ── Progress Bar ───────────────────────────────────────────── */
     QProgressBar {{
         border: none;
         border-radius: 4px;
-        background: {COLOR_HOVER_BG};
+        background: {c["hover_bg"]};
         height: 8px;
         text-align: center;
     }}
     QProgressBar::chunk {{
-        background: {COLOR_ACCENT};
+        background: {c["accent"]};
         border-radius: 4px;
     }}
 
     /* ── Status Bar ─────────────────────────────────────────────── */
     QStatusBar {{
-        background: {COLOR_PANEL_BG};
-        border-top: 1px solid {COLOR_BORDER};
-        color: {COLOR_TEXT_SECONDARY};
+        background: {c["panel_bg"]};
+        border-top: 1px solid {c["border"]};
+        color: {c["text_secondary"]};
         font-size: 12px;
     }}
     QStatusBar QLabel {{
-        color: {COLOR_TEXT_SECONDARY};
+        color: {c["text_secondary"]};
         padding: 0 4px;
     }}
 
     /* ── Menu Bar ───────────────────────────────────────────────── */
     QMenuBar {{
-        background: {COLOR_PANEL_BG};
-        border-bottom: 1px solid {COLOR_BORDER};
+        background: {c["panel_bg"]};
+        border-bottom: 1px solid {c["border"]};
     }}
     QMenuBar::item:selected {{
-        background: {COLOR_HOVER_BG};
+        background: {c["hover_bg"]};
         border-radius: 4px;
     }}
     QMenu {{
-        background: {COLOR_PANEL_BG};
-        border: 1px solid {COLOR_BORDER};
+        background: {c["panel_bg"]};
+        border: 1px solid {c["border"]};
         border-radius: 6px;
         padding: 4px 0;
     }}
@@ -277,18 +392,21 @@ def build_stylesheet() -> str:
         padding: 6px 24px 6px 12px;
     }}
     QMenu::item:selected {{
-        background: {COLOR_ACCENT};
+        background: {c["accent"]};
         color: white;
     }}
 
     /* ── Splitter ───────────────────────────────────────────────── */
     QSplitter::handle {{
-        background: {COLOR_BORDER};
+        background: {c["border"]};
     }}
     QSplitter::handle:horizontal {{
-        width: 1px;
+        width: 4px;
     }}
     QSplitter::handle:vertical {{
-        height: 1px;
+        height: 4px;
+    }}
+    QSplitter::handle:hover {{
+        background: {c["accent"]};
     }}
     """

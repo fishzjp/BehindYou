@@ -9,9 +9,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from behindyou.gui.styles import COLOR_DANGER, COLOR_SUCCESS, COLOR_TEXT_SECONDARY
-
-_INSTRUCTION_BASE_STYLE = "font-size: 16px; font-weight: 600; margin: 8px 0;"
+from behindyou.gui.styles import repolish
 
 
 class CalibrationDialog(QDialog):
@@ -31,25 +29,37 @@ class CalibrationDialog(QDialog):
 
         self._instruction = QLabel("正在准备校准...")
         self._instruction.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._instruction.setStyleSheet(_INSTRUCTION_BASE_STYLE)
+        self._instruction.setObjectName("calibration_instruction")
+        self._instruction.setAccessibleName("校准状态")
+        self._instruction.setWordWrap(True)
         layout.addWidget(self._instruction)
+
+        self._guidance = QLabel("请面向摄像头，保持自然坐姿，等待系统采集人脸数据")
+        self._guidance.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._guidance.setObjectName("calibration_guidance")
+        self._guidance.setWordWrap(True)
+        layout.addWidget(self._guidance)
 
         self._progress = QProgressBar()
         self._progress.setMinimum(0)
         self._progress.setMaximum(30)
         self._progress.setValue(0)
         self._progress.setFixedHeight(8)
+        self._progress.setAccessibleName("校准进度")
         layout.addWidget(self._progress)
 
         self._status = QLabel("")
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._status.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY};")
+        self._status.setObjectName("calibration_status")
+        self._status.setAccessibleName("校准详情")
+        self._status.setWordWrap(True)
         layout.addWidget(self._status)
 
         layout.addStretch()
 
         self._btn_action = QPushButton("取消")
         self._btn_action.setFixedHeight(32)
+        self._btn_action.setAccessibleName("取消校准")
         self._btn_action.clicked.connect(self._on_action)
         layout.addWidget(self._btn_action)
 
@@ -82,15 +92,19 @@ class CalibrationDialog(QDialog):
         self._done = True
         if success:
             self._instruction.setText("校准完成！")
-            self._instruction.setStyleSheet(f"{_INSTRUCTION_BASE_STYLE} color: {COLOR_SUCCESS};")
+            self._instruction.setProperty("cal_state", "success")
+            self._guidance.hide()
             self._status.setText(message)
             self._btn_action.setText("确定")
+            self._btn_action.setAccessibleName("关闭校准对话框")
             self._progress.setValue(self._progress.maximum())
         else:
             self._instruction.setText("校准失败")
-            self._instruction.setStyleSheet(f"{_INSTRUCTION_BASE_STYLE} color: {COLOR_DANGER};")
+            self._instruction.setProperty("cal_state", "failure")
+            self._guidance.hide()
             self._status.setText(message)
             self._btn_action.setText("关闭")
+        repolish(self._instruction)
 
     @property
     def cancelled(self) -> bool:

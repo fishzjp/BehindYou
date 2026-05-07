@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QSizePolicy,
     QSplitter,
     QStatusBar,
     QSystemTrayIcon,
@@ -21,8 +22,8 @@ from behindyou import __version__
 from behindyou.config import Config
 from behindyou.gui.calibration_dialog import CalibrationDialog
 from behindyou.gui.event_log import EventLog, ScreenshotViewer
-from behindyou.gui.styles import COLOR_SUCCESS, COLOR_TEXT_SECONDARY
 from behindyou.gui.settings_panel import SettingsPanel
+from behindyou.gui.styles import repolish
 from behindyou.gui.tray import TrayIcon
 from behindyou.gui.video_widget import VideoDisplay
 from behindyou.worker import DetectionWorker
@@ -34,7 +35,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BehindYou")
-        self.setMinimumSize(1000, 700)
+        self.setMinimumSize(900, 650)
 
         self._worker: DetectionWorker | None = None
         self._calibration_dialog: CalibrationDialog | None = None
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
         right_splitter = QSplitter(Qt.Orientation.Vertical)
 
         self._video = VideoDisplay()
+        self._video.setAccessibleName("摄像头画面")
         right_splitter.addWidget(self._video)
 
         self._event_log = EventLog()
@@ -117,15 +119,20 @@ class MainWindow(QMainWindow):
         self._status_dot = QLabel("●")
         self._status_dot.setFixedWidth(16)
         self._status_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._set_status_dot_color(running=False)
+        self._status_dot.setObjectName("status_dot")
+        self._status_dot.setProperty("status", "idle")
+        self._status_dot.setAccessibleName("检测状态指示灯")
         self._status_bar.addWidget(self._status_dot)
 
         self._status_label = QLabel("就绪")
-        self._status_bar.addWidget(self._status_label)
+        self._status_label.setAccessibleName("状态信息")
+        self._status_label.setWordWrap(True)
+        self._status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._status_bar.addWidget(self._status_label, 1)
 
     def _set_status_dot_color(self, running: bool) -> None:
-        color = COLOR_SUCCESS if running else COLOR_TEXT_SECONDARY
-        self._status_dot.setStyleSheet(f"color: {color}; font-size: 14px;")
+        self._status_dot.setProperty("status", "running" if running else "idle")
+        repolish(self._status_dot)
 
     def _setup_tray(self) -> None:
         self._tray = TrayIcon(self)
@@ -157,6 +164,7 @@ class MainWindow(QMainWindow):
         self._status_label.setText("正在启动...")
         self._worker.start()
 
+    @Slot()
     def _stop_detection(self) -> None:
         if self._worker is None:
             return
@@ -275,12 +283,17 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
     def _show_about(self) -> None:
+        from behindyou.paths import DATA_DIR
+
         QMessageBox.about(
             self,
             "关于 BehindYou",
-            f"BehindYou {__version__}\n\n"
-            "基于 YOLO 的实时身后人员检测系统\n"
-            "监控摄像头画面，检测陌生人靠近并发送通知",
+            f"<h3>BehindYou {__version__}</h3>"
+            "<p>基于 YOLO 的实时身后人员检测系统</p>"
+            "<p>监控摄像头画面，检测陌生人靠近并发送通知。</p>"
+            "<hr>"
+            "<p><b>引擎:</b> YOLO · InsightFace · PySide6</p>"
+            f"<p><b>数据目录:</b> {DATA_DIR}</p>",
         )
 
     def closeEvent(self, event: QCloseEvent) -> None:
