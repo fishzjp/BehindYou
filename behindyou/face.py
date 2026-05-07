@@ -66,7 +66,13 @@ class FaceRecognizer:
         self._owner_norm: float = 0.0
 
     def _get_frontal_faces(
-        self, frame: np.ndarray, person_bbox: np.ndarray, crop_ratio: float, max_yaw: float
+        self,
+        frame: np.ndarray,
+        person_bbox: np.ndarray,
+        crop_ratio: float,
+        max_yaw: float,
+        max_pitch: float = 30.0,
+        max_roll: float = 30.0,
     ) -> list | None:
         """Return detected faces filtered to frontal-only, or None on error/empty."""
         roi = _crop_upper_body(frame, person_bbox, crop_ratio)
@@ -79,7 +85,14 @@ class FaceRecognizer:
             return None
         if not faces:
             return None
-        frontal = [f for f in faces if f.pose is None or abs(f.pose[0]) <= max_yaw]
+        frontal = [
+            f
+            for f in faces
+            if f.pose is not None
+            and abs(f.pose[0]) <= max_yaw
+            and abs(f.pose[1]) <= max_pitch
+            and abs(f.pose[2]) <= max_roll
+        ]
         return frontal or None
 
     def has_frontal_face(
@@ -89,8 +102,12 @@ class FaceRecognizer:
         crop_ratio: float = 0.55,
         min_det_score: float = 0.5,
         max_yaw: float = 45.0,
+        max_pitch: float = 30.0,
+        max_roll: float = 30.0,
     ) -> bool:
-        faces = self._get_frontal_faces(frame, person_bbox, crop_ratio, max_yaw)
+        faces = self._get_frontal_faces(
+            frame, person_bbox, crop_ratio, max_yaw, max_pitch, max_roll
+        )
         if not faces:
             return False
         return any(f.det_score >= min_det_score for f in faces)
@@ -102,8 +119,12 @@ class FaceRecognizer:
         crop_ratio: float = 0.55,
         min_det_score: float = 0.5,
         max_yaw: float = 45.0,
+        max_pitch: float = 30.0,
+        max_roll: float = 30.0,
     ) -> FaceInfo | None:
-        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, max_yaw)
+        frontal = self._get_frontal_faces(
+            frame, person_bbox, crop_ratio, max_yaw, max_pitch, max_roll
+        )
         if not frontal:
             return None
 
@@ -127,8 +148,12 @@ class FaceRecognizer:
         person_bbox: np.ndarray,
         crop_ratio: float = 0.55,
         max_yaw: float = 45.0,
+        max_pitch: float = 30.0,
+        max_roll: float = 30.0,
     ) -> np.ndarray | None:
-        frontal = self._get_frontal_faces(frame, person_bbox, crop_ratio, max_yaw)
+        frontal = self._get_frontal_faces(
+            frame, person_bbox, crop_ratio, max_yaw, max_pitch, max_roll
+        )
         if not frontal:
             return None
         return frontal[0].embedding

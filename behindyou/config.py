@@ -3,6 +3,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import os
+import tempfile
 
 from behindyou.paths import DATA_DIR
 
@@ -25,17 +27,19 @@ class Config:
     ema_max_shift: float = 0.3
     ema_max_skips: int = 10
     face_crop_ratio: float = 0.55
-    face_match_threshold: float = 0.55
+    face_match_threshold: float = 0.8
     face_retry_interval: int = 15
     self_iou_threshold: float = 0.3
-    face_det_score: float = 0.5
+    face_det_score: float = 0.8
     face_max_yaw: float = 45.0
+    face_max_pitch: float = 30.0
+    face_max_roll: float = 30.0
 
     def __post_init__(self) -> None:
         if not 0.0 < self.confidence <= 1.0:
             raise ValueError(f"confidence must be in (0, 1], got {self.confidence}")
-        if self.cooldown < 0:
-            raise ValueError(f"cooldown must be >= 0, got {self.cooldown}")
+        if self.cooldown < 1.0:
+            raise ValueError(f"cooldown must be >= 1, got {self.cooldown}")
         if self.persistence < 1:
             raise ValueError(f"persistence must be >= 1, got {self.persistence}")
         if not 0.0 < self.min_area < 1.0:
@@ -64,6 +68,10 @@ class Config:
             raise ValueError(f"camera must be >= 0, got {self.camera}")
         if not 0.0 < self.face_max_yaw <= 90.0:
             raise ValueError(f"face_max_yaw must be in (0, 90], got {self.face_max_yaw}")
+        if not 0.0 < self.face_max_pitch <= 90.0:
+            raise ValueError(f"face_max_pitch must be in (0, 90], got {self.face_max_pitch}")
+        if not 0.0 < self.face_max_roll <= 90.0:
+            raise ValueError(f"face_max_roll must be in (0, 90], got {self.face_max_roll}")
 
     def to_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -76,12 +84,29 @@ class Config:
 
 def save_config(cfg: Config) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    _CONFIG_FILE.write_text(json.dumps(cfg.to_dict(), indent=2))
+    data = json.dumps(cfg.to_dict(), indent=2)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, _CONFIG_FILE)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
-def load_config() -> Config | None:
+def load_config() -> tuple[Config | None, str | None]:
     try:
         d = json.loads(_CONFIG_FILE.read_text())
-        return Config.from_dict(d)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError, TypeError):
-        return None
+        return Config.from_dict(d), None
+    except FileNotFoundError:
+        return None, None
+    except json.JSONDecodeError as e:
+        return None, f"配置文件格式错误: {e}"
+    except (ValueError, TypeError) as e:
+        return None, f"配置值无效: {e}"

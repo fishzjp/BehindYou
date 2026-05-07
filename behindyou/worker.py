@@ -93,7 +93,7 @@ class DetectionWorker(QObject):
 
                 result = self._engine.step(frame)
 
-                self.frame_ready.emit(result.annotated_frame)
+                self.frame_ready.emit(result.annotated_frame.copy())
 
                 if result.should_notify:
                     self.intrusion_detected.emit(len(result.intruder_boxes), result.screenshot_path)

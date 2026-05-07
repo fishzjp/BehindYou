@@ -38,10 +38,13 @@ def _escape_applescript(s: str) -> str:
 def _popen_silent(args: list[str]) -> None:
     with _procs_lock:
         _active_procs[:] = [p for p in _active_procs if p.poll() is None]
-        proc = subprocess.Popen(
-            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
-        )
-        _active_procs.append(proc)
+        try:
+            proc = subprocess.Popen(
+                args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            )
+            _active_procs.append(proc)
+        except OSError as e:
+            logger.warning("通知进程启动失败: %s", e)
 
 
 def _cleanup_old_screenshots() -> None:

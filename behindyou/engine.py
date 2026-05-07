@@ -209,6 +209,8 @@ def _classify_stranger(
             config.face_crop_ratio,
             config.face_det_score,
             config.face_max_yaw,
+            config.face_max_pitch,
+            config.face_max_roll,
         )
         if face_info is None:
             return False
@@ -395,7 +397,12 @@ class DetectionEngine:
                         embeddings_by_id[tid] = []
                     try:
                         emb = face_recognizer.get_embedding(
-                            frame, xyxy, config.face_crop_ratio, config.face_max_yaw
+                            frame,
+                            xyxy,
+                            config.face_crop_ratio,
+                            config.face_max_yaw,
+                            config.face_max_pitch,
+                            config.face_max_roll,
                         )
                     except Exception:
                         logger.warning("校准期间人脸特征提取失败", exc_info=True)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
 )
 
 from behindyou.config import Config, load_config, save_config
+
+logger = logging.getLogger(__name__)
 
 
 class _SliderRow(QWidget):
@@ -117,9 +120,9 @@ class SettingsPanel(QScrollArea):
 
         self._camera = _SliderRow("摄像头", 0, 10, 0, step=1.0)
         self._confidence = _SliderRow("灵敏度", 0.1, 1.0, 0.6)
-        self._cooldown = _SliderRow("报警间隔(秒)", 0, 60, 10, step=1.0)
+        self._cooldown = _SliderRow("报警间隔(秒)", 1, 60, 10, step=1.0)
         self._no_face_check = QCheckBox("关闭人脸验证（任何人靠近都报警）")
-        self._face_det_score = _SliderRow("人脸检测阈值", 0.1, 0.9, 0.5)
+        self._face_det_score = _SliderRow("人脸检测阈值", 0.1, 0.9, 0.8)
 
         basic_layout.addWidget(self._camera)
         basic_layout.addWidget(self._confidence)
@@ -130,7 +133,10 @@ class SettingsPanel(QScrollArea):
 
         self.setWidget(container)
 
-        self._current_config = load_config() or Config()
+        cfg, err = load_config()
+        if err:
+            logger.warning(f"加载配置失败: {err}")
+        self._current_config = cfg or Config()
 
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
@@ -147,19 +153,21 @@ class SettingsPanel(QScrollArea):
         self._debounce_timer.start()
 
     def get_config(self) -> Config:
-        return dataclasses.replace(
-            self._current_config,
+        overrides: dict = dict(
             camera=self._camera.value,
             confidence=self._confidence.value,
             cooldown=self._cooldown.value,
             no_face_check=self._no_face_check.isChecked(),
-            face_det_score=self._face_det_score.value,
         )
+        if not self._no_face_check.isChecked():
+            overrides["face_det_score"] = self._face_det_score.value
+        return dataclasses.replace(self._current_config, **overrides)
 
     def set_running(self, running: bool) -> None:
         self._btn_start.setEnabled(not running)
         self._btn_stop.setEnabled(running)
         self._btn_calibrate.setEnabled(not running)
+        self._camera.setEnabled(not running)
 
     def emit_config(self) -> None:
         self._current_config = self.get_config()

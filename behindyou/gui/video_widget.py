@@ -28,7 +28,7 @@ class VideoDisplay(QLabel):
         try:
             if bgr_frame is None or bgr_frame.size == 0:
                 return
-            rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+            rgb = np.ascontiguousarray(cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB))
             h, w, ch = rgb.shape
             qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888).copy()
             pixmap = QPixmap.fromImage(qimg)

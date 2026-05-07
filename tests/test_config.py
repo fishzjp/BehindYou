@@ -33,8 +33,13 @@ def test_invalid_cooldown_negative():
         Config(cooldown=-1)
 
 
-def test_valid_cooldown_zero():
-    Config(cooldown=0)  # should not raise
+def test_invalid_cooldown_zero():
+    with pytest.raises(ValueError, match="cooldown"):
+        Config(cooldown=0)
+
+
+def test_valid_cooldown_one():
+    Config(cooldown=1)  # should not raise
 
 
 def test_invalid_persistence_zero():
@@ -83,3 +88,24 @@ def test_face_max_yaw_validation():
     with pytest.raises(ValueError, match="face_max_yaw"):
         Config(face_max_yaw=91.0)
     Config(face_max_yaw=90.0)  # boundary OK
+
+
+@pytest.mark.parametrize("field", ["face_max_pitch", "face_max_roll"])
+class TestFaceMaxAngle:
+    def test_default(self, field):
+        assert getattr(Config(), field) == 30.0
+
+    def test_boundary_90(self, field):
+        Config(**{field: 90.0})
+
+    def test_rejects_zero(self, field):
+        with pytest.raises(ValueError, match=field):
+            Config(**{field: 0.0})
+
+    def test_rejects_negative(self, field):
+        with pytest.raises(ValueError, match=field):
+            Config(**{field: -5.0})
+
+    def test_rejects_above_90(self, field):
+        with pytest.raises(ValueError, match=field):
+            Config(**{field: 90.1})

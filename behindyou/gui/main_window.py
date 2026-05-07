@@ -89,12 +89,12 @@ class MainWindow(QMainWindow):
 
         det_menu = menu_bar.addMenu("检测")
         self._action_start = QAction("启动", self)
-        self._action_start.setShortcut(QKeySequence("Space"))
+        self._action_start.setShortcut(QKeySequence("F5"))
         self._action_start.triggered.connect(self._start_detection)
         det_menu.addAction(self._action_start)
 
         self._action_stop = QAction("停止", self)
-        self._action_stop.setShortcut(QKeySequence("Escape"))
+        self._action_stop.setShortcut(QKeySequence("F6"))
         self._action_stop.triggered.connect(self._stop_detection)
         self._action_stop.setEnabled(False)
         det_menu.addAction(self._action_stop)
