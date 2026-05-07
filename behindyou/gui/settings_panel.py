@@ -84,8 +84,8 @@ class SettingsPanel(QScrollArea):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWidgetResizable(True)
-        self.setMinimumWidth(200)
-        self.setMaximumWidth(300)
+        self.setMinimumWidth(240)
+        self.setMaximumWidth(340)
         self.setAccessibleName("设置面板")
 
         container = QWidget()
@@ -144,7 +144,7 @@ class SettingsPanel(QScrollArea):
 
         self._cooldown = _SliderRow("报警间隔(秒)", 1, 60, 10, step=1.0)
         self._cooldown.setToolTip("两次报警之间的最短间隔（秒），避免频繁通知")
-        self._no_face_check = QCheckBox("关闭人脸验证（任何人靠近都报警）")
+        self._no_face_check = QCheckBox("关闭人脸验证")
         self._no_face_check.setAccessibleName("关闭人脸验证")
         self._face_det_score = _SliderRow("人脸检测阈值", 0.1, 0.9, 0.8)
         self._face_det_score.setToolTip(

@@ -268,7 +268,7 @@ def build_stylesheet(*, dark: bool = False) -> str:
         border: none;
         border-left: 3px solid {c["accent"]};
         margin-top: 12px;
-        padding: 8px 8px 8px 12px;
+        padding: 8px 8px 8px 10px;
         font-weight: 600;
         font-size: 13px;
     }}
