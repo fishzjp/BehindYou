@@ -84,14 +84,18 @@ class EventLog(QWidget):
         ):
             self._list.clear()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        text = f"{timestamp} — {intruder_count} 人入侵"
+        icon = "\U0001f4f7 " if screenshot_path else ("⚠ " if intruder_count >= 2 else "")
+        text = f"{icon}{timestamp} — {intruder_count} 人入侵"
         if screenshot_path:
             text += "  [截图]"
         item = QListWidgetItem(text)
         item.setData(Qt.ItemDataRole.UserRole, screenshot_path)
         if screenshot_path:
             item.setForeground(QColor(self._accent_color))
+        elif intruder_count >= 2:
+            item.setForeground(QColor(current_colors()["danger"]))
         self._list.insertItem(0, item)
+        self._list.scrollToTop()
         while self._list.count() > self._MAX_EVENTS:
             self._list.takeItem(self._list.count() - 1)
 

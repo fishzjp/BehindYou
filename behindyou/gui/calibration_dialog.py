@@ -34,7 +34,7 @@ class CalibrationDialog(QDialog):
         self._instruction.setWordWrap(True)
         layout.addWidget(self._instruction)
 
-        self._guidance = QLabel("请面向摄像头，保持自然坐姿，等待系统采集人脸数据")
+        self._guidance = QLabel("请面向摄像头，保持自然坐姿\n摄像头画面显示在主窗口中")
         self._guidance.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._guidance.setObjectName("calibration_guidance")
         self._guidance.setWordWrap(True)

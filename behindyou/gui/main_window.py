@@ -53,6 +53,7 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(12, 12, 12, 12)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(8)
 
         self._settings = SettingsPanel()
         self._settings.start_requested.connect(self._start_detection)
@@ -62,6 +63,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._settings)
 
         right_splitter = QSplitter(Qt.Orientation.Vertical)
+        right_splitter.setHandleWidth(8)
 
         self._video = VideoDisplay()
         self._video.setAccessibleName("摄像头画面")
@@ -130,6 +132,12 @@ class MainWindow(QMainWindow):
         self._status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._status_bar.addWidget(self._status_label, 1)
 
+        self._fps_label = QLabel("")
+        self._fps_label.setObjectName("fps_label")
+        self._fps_label.setFixedWidth(64)
+        self._fps_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._status_bar.addPermanentWidget(self._fps_label)
+
     def _set_status_dot_color(self, running: bool) -> None:
         self._status_dot.setProperty("status", "running" if running else "idle")
         repolish(self._status_dot)
@@ -147,6 +155,7 @@ class MainWindow(QMainWindow):
         worker.intrusion_detected.connect(self._on_intrusion)
         worker.engine_error.connect(self._on_engine_error)
         worker.status_changed.connect(self._on_status_changed)
+        self._video.fps_updated.connect(self._on_fps_updated)
 
     def _start_detection(self) -> None:
         if self._worker is not None:
@@ -178,6 +187,10 @@ class MainWindow(QMainWindow):
         self._action_stop.setEnabled(running)
         self._tray.set_running(running)
         self._set_status_dot_color(running)
+        self._video.set_monitoring(running)
+        if not running:
+            self._video.set_placeholder_mode(True)
+            self._fps_label.setText("")
 
     @Slot()
     def _on_worker_finished(self) -> None:
@@ -246,6 +259,10 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_status_changed(self, status: str) -> None:
         self._status_label.setText(status)
+
+    @Slot(float)
+    def _on_fps_updated(self, fps: float) -> None:
+        self._fps_label.setText(f"{fps:.0f} FPS")
 
     @Slot(int, int, str)
     def _on_calibration_progress(self, current: int, total: int, msg: str) -> None:

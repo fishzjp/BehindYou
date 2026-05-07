@@ -344,6 +344,7 @@ class DetectionEngine:
         quick: bool = False,
         progress_cb: Callable[[int, int, str], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
+        frame_cb: Callable[[np.ndarray], None] | None = None,
     ) -> tuple[int | None, np.ndarray | None]:
         if self._cap is None:
             return None, None
@@ -359,9 +360,12 @@ class DetectionEngine:
         if progress_cb:
             progress_cb(0, 0, msg)
         if not quick:
-            for _ in range(30):
+            for i in range(30):
                 if cancel_check and cancel_check():
                     return None, None
+                ret, wait_frame = self._cap.read()
+                if ret and frame_cb is not None and i % 3 == 0:
+                    frame_cb(wait_frame)
                 time.sleep(0.1)
 
         sample_frames = 10 if quick else 30
@@ -377,6 +381,8 @@ class DetectionEngine:
             ret, frame = self._cap.read()
             if not ret:
                 continue
+            if frame_cb is not None and frame_idx % 3 == 0:
+                frame_cb(frame)
             detections = detect_people(self._model, frame, config.confidence)
             frame_area = frame.shape[0] * frame.shape[1]
             frame_got_face = False

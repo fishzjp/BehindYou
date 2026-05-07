@@ -67,6 +67,7 @@ class DetectionWorker(QObject):
                 quick=has_saved,
                 progress_cb=lambda cur, tot, msg: self.calibration_progress.emit(cur, tot, msg),
                 cancel_check=self._is_stopped,
+                frame_cb=lambda frame: self.frame_ready.emit(frame),
             )
 
             if self._stop_event.is_set():

@@ -123,9 +123,9 @@ class SettingsPanel(QScrollArea):
 
         self._layout.addWidget(btn_row)
 
-        # --- Basic settings ---
-        basic_group = QGroupBox("设置")
-        basic_layout = QVBoxLayout(basic_group)
+        # --- Detection settings ---
+        detect_group = QGroupBox("检测参数")
+        detect_layout = QVBoxLayout(detect_group)
 
         self._camera = _SliderRow("摄像头编号", 0, 10, 0, step=1.0)
         self._camera.setToolTip("摄像头设备编号，0 为默认摄像头")
@@ -133,6 +133,15 @@ class SettingsPanel(QScrollArea):
         self._confidence.setToolTip(
             "识别置信度阈值 (0.1-1.0)\n值越低越灵敏但误报越多，值越高越严格但可能漏检"
         )
+
+        detect_layout.addWidget(self._camera)
+        detect_layout.addWidget(self._confidence)
+        self._layout.addWidget(detect_group)
+
+        # --- Alert & face settings ---
+        alert_group = QGroupBox("报警与人脸")
+        alert_layout = QVBoxLayout(alert_group)
+
         self._cooldown = _SliderRow("报警间隔(秒)", 1, 60, 10, step=1.0)
         self._cooldown.setToolTip("两次报警之间的最短间隔（秒），避免频繁通知")
         self._no_face_check = QCheckBox("关闭人脸验证（任何人靠近都报警）")
@@ -142,12 +151,10 @@ class SettingsPanel(QScrollArea):
             "人脸检测的置信度阈值 (0.1-0.9)\n用于判断检测到的人是否有可见人脸"
         )
 
-        basic_layout.addWidget(self._camera)
-        basic_layout.addWidget(self._confidence)
-        basic_layout.addWidget(self._cooldown)
-        basic_layout.addWidget(self._no_face_check)
-        basic_layout.addWidget(self._face_det_score)
-        self._layout.addWidget(basic_group)
+        alert_layout.addWidget(self._cooldown)
+        alert_layout.addWidget(self._no_face_check)
+        alert_layout.addWidget(self._face_det_score)
+        self._layout.addWidget(alert_group)
 
         self.setWidget(container)
 

@@ -31,6 +31,7 @@ _LIGHT_COLORS: dict[str, str] = {
     "stop_hover_bg": "#fff0f0",
     "stop_pressed_bg": "#ffe0e0",
     "stop_disabled_text": "#d4a0a0",
+    "fps_text": "#86868b",
 }
 
 _DARK_COLORS: dict[str, str] = {
@@ -59,6 +60,7 @@ _DARK_COLORS: dict[str, str] = {
     "stop_hover_bg": "#3a2020",
     "stop_pressed_bg": "#4a2020",
     "stop_disabled_text": "#6b4040",
+    "fps_text": "#98989d",
 }
 
 
@@ -401,12 +403,20 @@ def build_stylesheet(*, dark: bool = False) -> str:
         background: {c["border"]};
     }}
     QSplitter::handle:horizontal {{
-        width: 4px;
+        width: 8px;
     }}
     QSplitter::handle:vertical {{
-        height: 4px;
+        height: 8px;
     }}
     QSplitter::handle:hover {{
         background: {c["accent"]};
+    }}
+
+    /* ── FPS Label ─────────────────────────────────────────────── */
+    QLabel#fps_label {{
+        color: {c["fps_text"]};
+        font-family: monospace;
+        font-size: 11px;
+        padding: 0 6px;
     }}
     """
